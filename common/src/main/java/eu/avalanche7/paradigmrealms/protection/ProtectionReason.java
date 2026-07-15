@@ -1,0 +1,14 @@
+package eu.avalanche7.paradigmrealms.protection;
+
+public enum ProtectionReason {
+    ALLOWED,
+    ALLOWED_ADMIN_BYPASS,
+    OUTSIDE_REALMS_DIMENSION,
+    GUARD_REGION,
+    UNALLOCATED_REALMS_SPACE,
+    NOT_A_MEMBER,
+    PRIVATE_REALM,
+    VISITOR_READ_ONLY,
+    REALM_NOT_ACTIVE,
+    ENVIRONMENTAL_BOUNDARY
+}

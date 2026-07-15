@@ -1,0 +1,19 @@
+allprojects {
+    group = 'eu.avalanche7'
+
+    repositories {
+        mavenCentral()
+    }
+}
+
+tasks.register('clean') {
+    group = 'build'
+    description = 'Cleans every Paradigm Realms module.'
+    dependsOn subprojects.collect { "${it.path}:clean" }
+}
+
+tasks.register('build') {
+    group = 'build'
+    description = 'Builds every Paradigm Realms module.'
+    dependsOn subprojects.collect { "${it.path}:build" }
+}

@@ -1,0 +1,92 @@
+plugins {
+    id 'fabric-loom' version "${loom_version}"
+}
+
+version = rootProject.mod_version
+base.archivesName = project.archives_base_name
+def resolvedModVersion = version.toString()
+def paradigmApiPath = providers.gradleProperty('paradigmApiPath')
+        .orElse('../Paradigm/common/build/libs/paradigm-api-2.2.4.jar')
+def paradigmApiFile = rootProject.file(paradigmApiPath.get())
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    implementation project(':common')
+    include project(':common')
+
+    compileOnly files(paradigmApiFile)
+    testCompileOnly files(paradigmApiFile)
+    testRuntimeOnly files(paradigmApiFile)
+
+    testImplementation platform('org.junit:junit-bom:5.10.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+def paradigmRuntimePath = providers.gradleProperty('paradigmRuntimePath')
+if (paradigmRuntimePath.isPresent()) {
+    def runtimeFile = rootProject.file(paradigmRuntimePath.get())
+    def runtimeCommonFile = rootProject.file(providers.gradleProperty('paradigmRuntimeCommonPath')
+            .orElse('../Paradigm/common/build/libs/common-2.2.4.jar').get())
+    if (!runtimeFile.isFile()) {
+        throw new GradleException("Requested Paradigm runtime jar not found at ${runtimeFile}")
+    }
+    if (!runtimeCommonFile.isFile()) {
+        throw new GradleException("Paradigm development common jar not found at ${runtimeCommonFile}; "
+                + "set -PparadigmRuntimeCommonPath=/absolute/path/to/common.jar")
+    }
+    dependencies.add('modRuntimeOnly', files(runtimeFile))
+    dependencies.add('runtimeOnly', files(runtimeCommonFile))
+}
+
+processResources {
+    inputs.property 'version', resolvedModVersion
+    filesMatching('fabric.mod.json') {
+        expand version: resolvedModVersion
+    }
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    doFirst {
+        if (!paradigmApiFile.isFile()) {
+            throw new GradleException("Paradigm Companion API jar not found at ${paradigmApiFile}. "
+                    + "Build it with '../Paradigm/gradlew :common:apiJar' or set "
+                    + "-PparadigmApiPath=/absolute/path/to/paradigm-api.jar")
+        }
+    }
+    options.encoding = 'UTF-8'
+    options.compilerArgs.add('-Xlint:deprecation')
+    options.release.set(21)
+}
+
+test {
+    useJUnitPlatform()
+}
+
+tasks.register('wildsResetToolJar', Jar) {
+    group = 'build'
+    description = 'Builds the standalone offline Wilds reset tool.'
+    archiveClassifier = 'wilds-reset-tool'
+    dependsOn tasks.named('classes'), project(':common').tasks.named('classes')
+    from(sourceSets.main.output.classesDirs) {
+        include 'eu/avalanche7/paradigmrealms/platform/wilds/offline/**'
+    }
+    from(project(':common').sourceSets.main.output)
+    manifest {
+        attributes 'Main-Class': 'eu.avalanche7.paradigmrealms.platform.wilds.offline.WildsOfflineResetTool'
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.named('build') {
+    dependsOn tasks.named('wildsResetToolJar')
+}

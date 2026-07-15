@@ -1,0 +1,22 @@
+package eu.avalanche7.paradigmrealms.membership;
+
+public enum MembershipStatus {
+    CREATED,
+    REFRESHED,
+    ACCEPTED,
+    DECLINED,
+    REMOVED,
+    LEFT,
+    ACCESS_CHANGED,
+    NO_REALM,
+    REALM_NOT_ACTIVE,
+    NOT_OWNER,
+    OWNER_CANNOT_BE_TARGET,
+    ALREADY_MEMBER,
+    NOT_MEMBER,
+    INVITATION_NOT_FOUND,
+    INVITATION_EXPIRED,
+    MAXIMUM_MEMBERS,
+    MAXIMUM_PENDING_INVITATIONS,
+    NO_CHANGE
+}

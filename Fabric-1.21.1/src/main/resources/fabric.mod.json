@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "paradigm_realms",
+  "version": "${version}",
+  "name": "Paradigm Realms",
+  "description": "Server-side shared realm and exploration dimensions.",
+  "authors": ["Avalanche7CZ"],
+  "license": "All-Rights-Reserved",
+  "environment": "server",
+  "entrypoints": {
+    "server": [
+      "eu.avalanche7.paradigmrealms.ParadigmRealms"
+    ]
+  },
+  "mixins": [
+    "paradigm-realms.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "fabric-api": ">=0.116.1",
+    "minecraft": ">=1.21.1 <1.21.2",
+    "java": ">=21"
+  },
+  "suggests": {
+    "paradigm": ">=2.2.4"
+  }
+}

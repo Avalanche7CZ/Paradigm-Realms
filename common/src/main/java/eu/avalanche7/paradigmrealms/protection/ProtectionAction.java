@@ -1,0 +1,21 @@
+package eu.avalanche7.paradigmrealms.protection;
+
+public enum ProtectionAction {
+    BLOCK_BREAK,
+    BLOCK_PLACE,
+    BLOCK_USE,
+    ITEM_USE_ON_BLOCK,
+    FLUID_FILL,
+    FLUID_EMPTY,
+    CONTAINER_OPEN,
+    ENTITY_INTERACT,
+    ENTITY_DAMAGE,
+    VEHICLE_PLACE,
+    VEHICLE_USE,
+    HANGING_ENTITY_PLACE,
+    HANGING_ENTITY_BREAK,
+    ITEM_PICKUP,
+    EXPERIENCE_PICKUP,
+    FARMLAND_TRAMPLE,
+    REALM_ENTRY
+}

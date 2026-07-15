@@ -1,0 +1,20 @@
+package eu.avalanche7.paradigmrealms.platform.wilds;
+
+public enum WildsActionResult {
+    SUCCESS,
+    DISABLED,
+    ENTRY_BLOCKED,
+    UNVERIFIED,
+    PERMISSION_DENIED,
+    ALREADY_SEARCHING,
+    COOLDOWN,
+    WORLD_UNAVAILABLE,
+    UNSAFE_DESTINATION,
+    RIDING_OR_HAS_PASSENGERS,
+    INVALID_STATE,
+    PROFILE_INVALID,
+    SAVE_FAILED,
+    MANIFEST_FAILED,
+    PLAYERS_REMAIN,
+    NOT_IN_WILDS
+}
