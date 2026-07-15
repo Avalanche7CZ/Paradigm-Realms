@@ -64,7 +64,7 @@ public final class RealmMembershipCommandModule {
         return commands.literal("invite")
                 .requires(source -> allowed(source, permissions, RealmPermissionNodes.INVITE))
                 .then(commands.argument("player", CommandArgument.word())
-                        .suggests((context, input) -> players.onlineNames(context.source()))
+                        .suggests((context, input) -> players.cachedNames(context.source()))
                         .executes(context -> invitePlayer(
                                 context.source(), runtime, messages, players, context.string("player"))));
     }
@@ -118,12 +118,16 @@ public final class RealmMembershipCommandModule {
         RealmMembershipCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         PlayerReference owner = requirePlayer(source);
         if (runtime == null || owner == null) return 0;
-        Optional<PlayerIdentity> target = players.onlineExact(source, targetName);
-        if (target.isEmpty()) {
-            source.sendError("That player must be online for an invitation.");
+        var resolution = players.resolveCached(source, targetName);
+        if (resolution.status() == eu.avalanche7.paradigmrealms.platform.player.PlayerIdentityResolution.Status.AMBIGUOUS) {
+            source.sendError("That cached player name is ambiguous.");
             return 0;
         }
-        PlayerIdentity resolved = target.orElseThrow();
+        if (resolution.status() == eu.avalanche7.paradigmrealms.platform.player.PlayerIdentityResolution.Status.UNKNOWN) {
+            source.sendError("No cached player has that name.");
+            return 0;
+        }
+        PlayerIdentity resolved = resolution.identity().orElseThrow();
         MembershipResult result = runtime.invite(owner.uuid(), owner.name(), resolved.uuid(), resolved.name());
         if (!result.succeeded()) return membershipError(source, result);
         messages.send(source, "<color:aqua>Invitation {status}</color> for {player}.",

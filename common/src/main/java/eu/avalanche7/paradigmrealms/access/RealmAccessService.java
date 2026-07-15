@@ -14,20 +14,30 @@ public final class RealmAccessService {
         Objects.requireNonNull(action, "action");
 
         AccessRole role = roleOf(realm, actor);
+        if (role == AccessRole.BANNED) {
+            return new AccessDecision(false, role, AccessDecisionReason.BANNED);
+        }
         if (realm.state() != RealmLifecycleState.ACTIVE) {
             return new AccessDecision(false, role, AccessDecisionReason.REALM_NOT_ACTIVE);
         }
         return switch (role) {
             case OWNER -> allow(role, AccessDecisionReason.ALLOWED_OWNER);
+            case MANAGER -> allow(role, AccessDecisionReason.ALLOWED_MANAGER);
             case MEMBER -> allow(role, AccessDecisionReason.ALLOWED_MEMBER);
             case VISITOR -> visitorDecision(role, action, AccessDecisionReason.ALLOWED_PUBLIC_VISITOR);
-            case UNAUTHORIZED -> new AccessDecision(false, role, AccessDecisionReason.PRIVATE_REALM);
+            case BANNED, UNAUTHORIZED -> new AccessDecision(false, role, AccessDecisionReason.PRIVATE_REALM);
         };
     }
 
     public AccessRole roleOf(Realm realm, UUID actor) {
         if (realm.owner().uuid().equals(actor)) {
             return AccessRole.OWNER;
+        }
+        if (realm.bans().containsKey(actor)) {
+            return AccessRole.BANNED;
+        }
+        if (realm.managers().contains(actor)) {
+            return AccessRole.MANAGER;
         }
         if (realm.members().contains(actor)) {
             return AccessRole.MEMBER;

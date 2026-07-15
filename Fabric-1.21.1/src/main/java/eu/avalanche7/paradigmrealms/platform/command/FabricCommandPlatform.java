@@ -22,6 +22,7 @@ import net.minecraft.text.HoverEvent;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
+import net.minecraft.text.TextColor;
 
 public final class FabricCommandPlatform implements CommandPlatform {
     private final CommandDispatcher<ServerCommandSource> dispatcher;
@@ -166,6 +167,9 @@ public final class FabricCommandPlatform implements CommandPlatform {
                 }
                 if (part.hover().isPresent()) style = style.withHoverEvent(new HoverEvent(
                         HoverEvent.Action.SHOW_TEXT, Text.literal(part.hover().orElseThrow())));
+                if (part.color().isPresent()) style = style.withColor(TextColor.fromRgb(part.color().orElseThrow()));
+                style = style.withBold(part.bold()).withUnderline(part.underlined())
+                        .withStrikethrough(part.strikethrough());
                 root.append(rendered.setStyle(style));
             }
             return root;

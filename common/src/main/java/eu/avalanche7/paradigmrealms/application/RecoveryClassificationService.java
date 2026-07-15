@@ -9,7 +9,7 @@ public final class RecoveryClassificationService {
             case GENERATING -> RecoveryAction.REPLAY_GENERATION;
             case FAILED -> RecoveryAction.ADMIN_REVIEW;
             case DELETING -> RecoveryAction.RESUME_DELETION;
-            case ACTIVE, DELETED -> RecoveryAction.NONE;
+            case READY, ACTIVE, ARCHIVED, DELETED -> RecoveryAction.NONE;
         };
     }
 }

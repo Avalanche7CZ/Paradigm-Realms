@@ -7,10 +7,14 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.SharedConstants;
 import net.minecraft.resource.ResourceType;
 import eu.avalanche7.paradigmrealms.platform.FabricRealmRuntime;
 import eu.avalanche7.paradigmrealms.platform.FabricRealmsPlatformAdapter;
 import eu.avalanche7.paradigmrealms.core.CommonRuntime;
+import eu.avalanche7.paradigmrealms.core.StartupBanner;
+import eu.avalanche7.paradigmrealms.platform.PlatformMetadata;
 import eu.avalanche7.paradigmrealms.platform.command.CompatibilityTeleportCommands;
 import eu.avalanche7.paradigmrealms.platform.integration.OptionalIntegrationBootstrap;
 import eu.avalanche7.paradigmrealms.platform.message.MessageRouter;
@@ -31,6 +35,7 @@ public final class ParadigmRealms implements DedicatedServerModInitializer {
 
     @Override
     public void onInitializeServer() {
+        logStartupBanner();
         RealmsConfig config = RealmsConfigLoader.load();
         FabricPresetCatalogManager presets = new FabricPresetCatalogManager(config);
         ResourceManagerHelper.get(ResourceType.SERVER_DATA)
@@ -47,6 +52,7 @@ public final class ParadigmRealms implements DedicatedServerModInitializer {
             }
         });
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            FabricRealmsPlatformAdapter.loadPlayerCache(server);
             presets.reload(server.getResourceManager());
             runtime = FabricRealmRuntime.start(server, config, presets, permissions, messages);
             FabricProtectionEvents.register(runtime.protection());
@@ -62,6 +68,10 @@ public final class ParadigmRealms implements DedicatedServerModInitializer {
                 if (!recovered.isEmpty()) {
                     LOGGER.info("Recovered {} interrupted realm creation operation(s)", recovered.size());
                 }
+                var lifecycleRecovered = runtime.recoverInterruptedLifecycle();
+                if (!lifecycleRecovered.isEmpty()) {
+                    LOGGER.info("Recovered {} interrupted realm lifecycle operation(s)", lifecycleRecovered.size());
+                }
                 int expired = runtime.membership().cleanupExpired();
                 if (expired > 0) LOGGER.info("Removed {} expired realm invitation(s) during startup", expired);
             }
@@ -76,8 +86,10 @@ public final class ParadigmRealms implements DedicatedServerModInitializer {
                 current.wilds().validateAllPresence();
             }
             if (current != null) current.wilds().tick();
+            if (current != null) current.tickLifecycle();
         });
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            FabricRealmsPlatformAdapter.loadPlayerCache(server);
             FabricRealmRuntime current = runtime;
             if (current != null) {
                 current.presence().validate(handler.player);
@@ -112,6 +124,17 @@ public final class ParadigmRealms implements DedicatedServerModInitializer {
             eu.avalanche7.paradigmrealms.platform.wilds.WildsBootContext.clear();
         });
         LOGGER.info("Paradigm Realms server adapter initialized");
+    }
+
+    private static void logStartupBanner() {
+        FabricLoader loader = FabricLoader.getInstance();
+        String modVersion = loader.getModContainer(MOD_ID)
+                .map(container -> container.getMetadata().getVersion().getFriendlyString()).orElse("unknown");
+        String loaderVersion = loader.getModContainer("fabricloader")
+                .map(container -> container.getMetadata().getVersion().getFriendlyString()).orElse("unknown");
+        PlatformMetadata metadata = new PlatformMetadata(modVersion,
+                SharedConstants.getGameVersion().getName(), "Fabric", loaderVersion);
+        StartupBanner.lines(metadata).forEach(LOGGER::info);
     }
 
     private static FabricRealmRuntime runtime() {

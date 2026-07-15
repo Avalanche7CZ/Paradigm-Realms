@@ -15,6 +15,8 @@ import eu.avalanche7.paradigmrealms.generation.PresetCatalogSnapshot;
 import eu.avalanche7.paradigmrealms.generation.importing.PresetImportResult;
 import eu.avalanche7.paradigmrealms.persistence.validation.ValidationIssue;
 import eu.avalanche7.paradigmrealms.persistence.validation.ValidationReport;
+import eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService;
+import eu.avalanche7.paradigmrealms.operations.ConfigCommandResult;
 
 public interface RealmAdminCommandRuntime {
     List<Realm> inspectRealms();
@@ -36,4 +38,13 @@ public interface RealmAdminCommandRuntime {
     void enableSessionBypass(UUID player);
     void disableSessionBypass(UUID player);
     boolean sessionBypassEnabled(UUID player);
+    RealmLifecycleManagementService.Result restoreArchive(RealmId id);
+    RealmLifecycleManagementService.Result retryRealmOperation(RealmId id);
+    List<String> repairPreview();
+    boolean repairIndexes();
+    int repairStaleSessions();
+    int repairExpiredOperations();
+    Optional<String> exportSupportBundle();
+    ConfigCommandResult validateConfig();
+    ConfigCommandResult reloadConfig();
 }

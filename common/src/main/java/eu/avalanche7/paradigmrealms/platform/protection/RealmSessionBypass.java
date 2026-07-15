@@ -12,4 +12,6 @@ public final class RealmSessionBypass {
     public boolean disable(UUID player) { return enabled.remove(player); }
     public void clear(UUID player) { enabled.remove(player); }
     public void clearAll() { enabled.clear(); }
+    public int size() { return enabled.size(); }
+    public Set<UUID> snapshot() { return Set.copyOf(enabled); }
 }

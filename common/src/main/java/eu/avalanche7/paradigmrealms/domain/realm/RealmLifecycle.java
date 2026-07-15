@@ -38,11 +38,14 @@ public final class RealmLifecycle {
         transitions.put(RealmLifecycleState.ALLOCATED,
                 EnumSet.of(RealmLifecycleState.GENERATING, RealmLifecycleState.FAILED));
         transitions.put(RealmLifecycleState.GENERATING,
+                EnumSet.of(RealmLifecycleState.READY, RealmLifecycleState.ACTIVE, RealmLifecycleState.FAILED));
+        transitions.put(RealmLifecycleState.READY,
                 EnumSet.of(RealmLifecycleState.ACTIVE, RealmLifecycleState.FAILED));
         transitions.put(RealmLifecycleState.ACTIVE, EnumSet.of(RealmLifecycleState.DELETING));
         transitions.put(RealmLifecycleState.FAILED,
                 EnumSet.of(RealmLifecycleState.GENERATING, RealmLifecycleState.DELETING));
-        transitions.put(RealmLifecycleState.DELETING, EnumSet.of(RealmLifecycleState.DELETED));
+        transitions.put(RealmLifecycleState.DELETING, EnumSet.of(RealmLifecycleState.ARCHIVED));
+        transitions.put(RealmLifecycleState.ARCHIVED, EnumSet.noneOf(RealmLifecycleState.class));
         transitions.put(RealmLifecycleState.DELETED, EnumSet.noneOf(RealmLifecycleState.class));
         return Map.copyOf(transitions);
     }

@@ -11,6 +11,11 @@ import java.util.function.Supplier;
 import eu.avalanche7.paradigmrealms.allocation.RealmAllocator;
 import eu.avalanche7.paradigmrealms.application.AllocationPreviewService;
 import eu.avalanche7.paradigmrealms.application.RealmInspectionService;
+import eu.avalanche7.paradigmrealms.application.RealmDirectoryService;
+import eu.avalanche7.paradigmrealms.application.RealmOwnerManagementService;
+import eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService;
+import eu.avalanche7.paradigmrealms.application.RealmConfirmationService;
+import eu.avalanche7.paradigmrealms.application.RealmLifecycleEffects;
 import eu.avalanche7.paradigmrealms.application.RealmMemberInspectionService;
 import eu.avalanche7.paradigmrealms.application.RealmSpawnService;
 import eu.avalanche7.paradigmrealms.application.RealmTeleportService;
@@ -35,6 +40,9 @@ import eu.avalanche7.paradigmrealms.membership.RealmMembershipService;
 import eu.avalanche7.paradigmrealms.persistence.RealmRepository;
 import eu.avalanche7.paradigmrealms.persistence.validation.ValidationReport;
 import eu.avalanche7.paradigmrealms.platform.RealmsServerPlatformAdapter;
+import eu.avalanche7.paradigmrealms.config.RealmSettingsPolicy;
+import eu.avalanche7.paradigmrealms.application.RealmOwnershipTransferService;
+import eu.avalanche7.paradigmrealms.ownership.PreviousOwnerRole;
 
 public final class RealmsRuntime {
     private final RealmRepository repository;
@@ -45,6 +53,11 @@ public final class RealmsRuntime {
     private final StartupValidationService startupValidation;
     private final RealmCreationService creation;
     private final RealmMembershipService membership;
+    private final RealmOwnerManagementService ownerManagement;
+    private final RealmDirectoryService directory;
+    private final RealmLifecycleManagementService lifecycleManagement;
+    private final RealmConfirmationService confirmations;
+    private final RealmOwnershipTransferService ownershipTransfers;
     private final RealmTeleportService teleports;
     private final RealmSpawnService spawns;
     private final Supplier<RealmPresetCatalog> presetCatalog;
@@ -63,6 +76,60 @@ public final class RealmsRuntime {
             Clock clock,
             Supplier<UUID> operationIds,
             RealmsRuntimeHooks hooks) {
+        this(repository, allocator, presetCatalog, presetSelection, generation, serverPlatform,
+                membershipLimits, clock, operationIds, RealmSettingsPolicy.secureDefaults(),
+                RealmLifecycleEffects.immediate(), hooks);
+    }
+
+    public RealmsRuntime(
+            RealmRepository repository,
+            RealmAllocator allocator,
+            Supplier<RealmPresetCatalog> presetCatalog,
+            Supplier<PresetSelectionConfig> presetSelection,
+            RealmGenerationPort generation,
+            RealmsServerPlatformAdapter serverPlatform,
+            MembershipLimits membershipLimits,
+            Clock clock,
+            Supplier<UUID> operationIds,
+            RealmLifecycleEffects lifecycleEffects,
+            RealmsRuntimeHooks hooks) {
+        this(repository, allocator, presetCatalog, presetSelection, generation, serverPlatform,
+                membershipLimits, clock, operationIds, RealmSettingsPolicy.secureDefaults(), lifecycleEffects, hooks);
+    }
+
+    public RealmsRuntime(
+            RealmRepository repository,
+            RealmAllocator allocator,
+            Supplier<RealmPresetCatalog> presetCatalog,
+            Supplier<PresetSelectionConfig> presetSelection,
+            RealmGenerationPort generation,
+            RealmsServerPlatformAdapter serverPlatform,
+            MembershipLimits membershipLimits,
+            Clock clock,
+            Supplier<UUID> operationIds,
+            RealmSettingsPolicy settingsPolicy,
+            RealmLifecycleEffects lifecycleEffects,
+            RealmsRuntimeHooks hooks) {
+        this(repository, allocator, presetCatalog, presetSelection, generation, serverPlatform,
+                membershipLimits, clock, operationIds, settingsPolicy, lifecycleEffects,
+                java.time.Duration.ofMinutes(15), PreviousOwnerRole.MANAGER, hooks);
+    }
+
+    public RealmsRuntime(
+            RealmRepository repository,
+            RealmAllocator allocator,
+            Supplier<RealmPresetCatalog> presetCatalog,
+            Supplier<PresetSelectionConfig> presetSelection,
+            RealmGenerationPort generation,
+            RealmsServerPlatformAdapter serverPlatform,
+            MembershipLimits membershipLimits,
+            Clock clock,
+            Supplier<UUID> operationIds,
+            RealmSettingsPolicy settingsPolicy,
+            RealmLifecycleEffects lifecycleEffects,
+            java.time.Duration transferExpiry,
+            PreviousOwnerRole previousOwnerRole,
+            RealmsRuntimeHooks hooks) {
         this.repository = Objects.requireNonNull(repository, "repository");
         Objects.requireNonNull(allocator, "allocator");
         this.presetCatalog = Objects.requireNonNull(presetCatalog, "presetCatalog");
@@ -76,12 +143,19 @@ public final class RealmsRuntime {
         this.creation = new RealmCreationService(
                 repository, allocator, presetCatalog, new PresetPlacementPlanner(),
                 Objects.requireNonNull(generation, "generation"), Objects.requireNonNull(clock, "clock"),
-                Objects.requireNonNull(operationIds, "operationIds"));
+                Objects.requireNonNull(operationIds, "operationIds"), settingsPolicy.defaults());
         this.teleports = new RealmTeleportService(
                 Objects.requireNonNull(serverPlatform, "serverPlatform"));
         this.spawns = new RealmSpawnService(repository, teleports, serverPlatform.players());
         this.membership = new RealmMembershipService(
                 repository, Objects.requireNonNull(membershipLimits, "membershipLimits"), clock);
+        this.ownerManagement = new RealmOwnerManagementService(repository, clock, settingsPolicy);
+        this.directory = new RealmDirectoryService(repository);
+        this.lifecycleManagement = new RealmLifecycleManagementService(repository, allocator, presetCatalog,
+                generation, lifecycleEffects, clock, operationIds, hooks::realmIndexChanged);
+        this.confirmations = new RealmConfirmationService(clock);
+        this.ownershipTransfers = new RealmOwnershipTransferService(
+                repository, clock, operationIds, transferExpiry, previousOwnerRole);
         hooks.realmIndexChanged();
     }
 
@@ -129,7 +203,95 @@ public final class RealmsRuntime {
         return recovered;
     }
 
+    public List<RealmLifecycleManagementService.Result> recoverInterruptedLifecycle() {
+        List<RealmLifecycleManagementService.Result> recovered = lifecycleManagement.recover();
+        hooks.realmIndexChanged();
+        return recovered;
+    }
+
     public RealmMembershipService membership() { return membership; }
+    public RealmOwnerManagementService ownerManagement() { return ownerManagement; }
+    public RealmDirectoryService directory() { return directory; }
+
+    public RealmOwnerManagementService.Result setRealmName(UUID actor, String name) {
+        return ownerMutation(ownerManagement.setName(actor, name), false);
+    }
+
+    public RealmOwnerManagementService.Result setRealmDescription(UUID actor, String description) {
+        return ownerMutation(ownerManagement.setDescription(actor, description), false);
+    }
+
+    public RealmOwnerManagementService.Result setRealmListed(UUID actor, boolean listed) {
+        return ownerMutation(ownerManagement.setListed(actor, listed), false);
+    }
+
+    public RealmOwnerManagementService.Result setRealmRole(
+            UUID actor, UUID target, eu.avalanche7.paradigmrealms.domain.realm.RealmMemberRole role) {
+        return ownerMutation(ownerManagement.setRole(actor, target, role), true);
+    }
+
+    public RealmOwnerManagementService.Result banFromRealm(
+            UUID actor, UUID target, String targetName, Optional<String> reason) {
+        return ownerMutation(ownerManagement.ban(actor, target, targetName, reason), true);
+    }
+
+    public RealmOwnerManagementService.Result unbanFromRealm(UUID actor, UUID target) {
+        return ownerMutation(ownerManagement.unban(actor, target), false);
+    }
+
+    public RealmOwnerManagementService.Result setRealmSetting(
+            UUID actor, eu.avalanche7.paradigmrealms.domain.realm.RealmSetting setting, boolean value) {
+        return ownerMutation(ownerManagement.setSetting(actor, setting, value), false);
+    }
+
+    private RealmOwnerManagementService.Result ownerMutation(
+            RealmOwnerManagementService.Result result, boolean revalidate) {
+        if (result.succeeded()) {
+            hooks.realmIndexChanged();
+            if (revalidate) result.realm().ifPresent(realm -> hooks.revalidateRealmPresence(realm.id()));
+        }
+        return result;
+    }
+    public RealmLifecycleManagementService lifecycleManagement() { return lifecycleManagement; }
+    public RealmOwnershipTransferService ownershipTransfers() { return ownershipTransfers; }
+
+    public Optional<String> requestResetConfirmation(UUID owner, RealmPresetId preset) {
+        return repository.findByOwner(owner).filter(realm -> realm.lifecycleOperation().isEmpty())
+                .map(realm -> confirmations.issue(owner, realm.id(), RealmConfirmationService.Kind.RESET,
+                        Optional.of(preset.value())));
+    }
+
+    public RealmLifecycleManagementService.Result confirmReset(UUID owner, String token) {
+        Realm realm = repository.findByOwner(owner).orElse(null);
+        if (realm == null) return RealmLifecycleManagementService.Result.noRealm();
+        return confirmations.consume(owner, realm.id(), RealmConfirmationService.Kind.RESET, token)
+                .map(confirmation -> lifecycleManagement.reset(owner,
+                        new RealmPresetId(confirmation.preset().orElseThrow())))
+                .orElse(new RealmLifecycleManagementService.Result(
+                        RealmLifecycleManagementService.Status.CONFIRMATION_INVALID, Optional.of(realm), Optional.empty()));
+    }
+
+    public Optional<String> requestDeleteConfirmation(UUID owner) {
+        return repository.findByOwner(owner).filter(realm -> realm.lifecycleOperation().isEmpty())
+                .map(realm -> confirmations.issue(owner, realm.id(), RealmConfirmationService.Kind.DELETE, Optional.empty()));
+    }
+
+    public RealmLifecycleManagementService.Result confirmDelete(UUID owner, String token) {
+        Realm realm = repository.findByOwner(owner).orElse(null);
+        if (realm == null) return RealmLifecycleManagementService.Result.noRealm();
+        return confirmations.consume(owner, realm.id(), RealmConfirmationService.Kind.DELETE, token)
+                .map(confirmation -> lifecycleManagement.delete(owner))
+                .orElse(new RealmLifecycleManagementService.Result(
+                        RealmLifecycleManagementService.Status.CONFIRMATION_INVALID, Optional.of(realm), Optional.empty()));
+    }
+
+    public void cancelReset(UUID owner) {
+        repository.findByOwner(owner).ifPresent(realm -> confirmations.cancel(owner, realm.id(), RealmConfirmationService.Kind.RESET));
+    }
+
+    public void cancelDelete(UUID owner) {
+        repository.findByOwner(owner).ifPresent(realm -> confirmations.cancel(owner, realm.id(), RealmConfirmationService.Kind.DELETE));
+    }
     public RealmTeleportService teleports() { return teleports; }
     public RealmSpawnService spawns() { return spawns; }
 

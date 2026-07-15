@@ -16,7 +16,6 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
     implementation project(':common')
-    include project(':common')
 
     compileOnly files(paradigmApiFile)
     testCompileOnly files(paradigmApiFile)
@@ -53,6 +52,12 @@ processResources {
 java {
     toolchain.languageVersion = JavaLanguageVersion.of(21)
     withSourcesJar()
+}
+
+tasks.named('jar', Jar) {
+    dependsOn project(':common').tasks.named('classes')
+    from(project(':common').sourceSets.main.output)
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.withType(JavaCompile).configureEach {

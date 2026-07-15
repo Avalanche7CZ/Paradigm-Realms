@@ -10,6 +10,7 @@ import java.util.Properties;
 import eu.avalanche7.paradigmrealms.ParadigmRealms;
 import eu.avalanche7.paradigmrealms.config.RealmsConfig;
 import net.fabricmc.loader.api.FabricLoader;
+import java.util.Optional;
 
 public final class RealmsConfigLoader {
     private RealmsConfigLoader() {}
@@ -49,6 +50,33 @@ public final class RealmsConfigLoader {
             ParadigmRealms.LOGGER.error("Invalid Realms config {}; using protected defaults: {}",
                     path, exception.getMessage());
             return RealmsConfig.DEFAULTS;
+        }
+    }
+
+    public static ValidationResult validate() {
+        return validate(FabricLoader.getInstance().getConfigDir().resolve("paradigm-realms.properties"));
+    }
+
+    static ValidationResult validate(Path path) {
+        Properties properties = new Properties();
+        try {
+            if (Files.isSymbolicLink(path)) return ValidationResult.invalid("configuration file must not be a symlink");
+            if (Files.isRegularFile(path)) {
+                try (Reader reader = Files.newBufferedReader(path)) {
+                    properties.load(reader);
+                }
+            }
+            Properties defaults = RealmsConfig.defaultProperties();
+            defaults.stringPropertyNames().forEach(key -> properties.putIfAbsent(key, defaults.getProperty(key)));
+            return new ValidationResult(Optional.of(RealmsConfig.fromProperties(properties)), Optional.empty());
+        } catch (IOException | IllegalArgumentException exception) {
+            return ValidationResult.invalid(exception.getMessage());
+        }
+    }
+
+    public record ValidationResult(Optional<RealmsConfig> config, Optional<String> error) {
+        public static ValidationResult invalid(String error) {
+            return new ValidationResult(Optional.empty(), Optional.ofNullable(error));
         }
     }
 }

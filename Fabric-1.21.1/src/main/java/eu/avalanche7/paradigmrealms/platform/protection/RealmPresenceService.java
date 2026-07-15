@@ -5,6 +5,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.List;
 
 import eu.avalanche7.paradigmrealms.ParadigmRealms;
 import eu.avalanche7.paradigmrealms.domain.DimensionId;
@@ -15,7 +17,11 @@ import eu.avalanche7.paradigmrealms.protection.ProtectionDecision;
 import eu.avalanche7.paradigmrealms.region.RealmRegionKind;
 import eu.avalanche7.paradigmrealms.platform.FabricRealmRuntime;
 import eu.avalanche7.paradigmrealms.application.RealmTeleportService;
+import eu.avalanche7.paradigmrealms.application.RealmLifecycleEffects;
+import eu.avalanche7.paradigmrealms.domain.realm.Realm;
 import eu.avalanche7.paradigmrealms.platform.teleport.TeleportResult;
+import eu.avalanche7.paradigmrealms.access.RealmAccessService;
+import eu.avalanche7.paradigmrealms.modules.command.RealmOwnerCommandRuntime;
 import eu.avalanche7.paradigmrealms.region.BlockCoordinate;
 import eu.avalanche7.paradigmrealms.region.BlockPosition;
 import net.minecraft.registry.RegistryKey;
@@ -36,6 +42,7 @@ public final class RealmPresenceService {
     private final Map<UUID, SafeLocation> lastAllowed = new HashMap<>();
     private final Map<UUID, Long> lastEvacuationAttempt = new HashMap<>();
     private final Set<UUID> evacuating = new HashSet<>();
+    private final Map<RealmId, Integer> lifecycleEvacuationAttempts = new HashMap<>();
 
     public RealmPresenceService(
             MinecraftServer server,
@@ -96,6 +103,94 @@ public final class RealmPresenceService {
         lastAllowed.clear();
         lastEvacuationAttempt.clear();
         evacuating.clear();
+        lifecycleEvacuationAttempts.clear();
+    }
+
+    public int pruneStaleSessions() {
+        Set<UUID> online = server.getPlayerManager().getPlayerList().stream()
+                .map(ServerPlayerEntity::getUuid).collect(java.util.stream.Collectors.toUnmodifiableSet());
+        int before = lastAllowed.size() + lastEvacuationAttempt.size() + evacuating.size();
+        lastAllowed.keySet().removeIf(player -> !online.contains(player));
+        lastEvacuationAttempt.keySet().removeIf(player -> !online.contains(player));
+        evacuating.removeIf(player -> !online.contains(player));
+        return before - lastAllowed.size() - lastEvacuationAttempt.size() - evacuating.size();
+    }
+
+    public RealmLifecycleEffects.EvacuationResult evacuateAndVerify(Realm source) {
+        ArrayList<ServerPlayerEntity> occupants = occupants(source);
+        if (occupants.isEmpty()) {
+            lifecycleEvacuationAttempts.remove(source.id());
+            return RealmLifecycleEffects.EvacuationResult.COMPLETE;
+        }
+        int attempt = lifecycleEvacuationAttempts.merge(source.id(), 1, Integer::sum);
+        for (ServerPlayerEntity player : occupants) {
+            player.stopRiding();
+            List.copyOf(player.getPassengerList()).forEach(net.minecraft.entity.Entity::stopRiding);
+            player.removeAllPassengers();
+            Realm own = runtime.repository().findByOwner(player.getUuid()).orElse(null);
+            TeleportResult result = own != null && !own.id().equals(source.id())
+                    ? teleports.teleportToRealm(player.getUuid(), own)
+                    : teleports.teleportToOverworldSpawn(player.getUuid());
+            if (result != TeleportResult.SUCCESS) {
+                ParadigmRealms.LOGGER.warn("Lifecycle evacuation attempt {} failed for {} in realm {}: {}",
+                        attempt, player.getUuid(), source.id(), result);
+            }
+        }
+        if (attempt >= 3 && !occupants(source).isEmpty()) {
+            lifecycleEvacuationAttempts.remove(source.id());
+            return RealmLifecycleEffects.EvacuationResult.FAILED;
+        }
+        return RealmLifecycleEffects.EvacuationResult.RETRY;
+    }
+
+    public eu.avalanche7.paradigmrealms.modules.command.RealmOwnerCommandRuntime.KickResult kick(
+            Realm realm, UUID target) {
+        ServerPlayerEntity player = server.getPlayerManager().getPlayer(target);
+        if (player == null || !occupants(realm).contains(player)) {
+            return eu.avalanche7.paradigmrealms.modules.command.RealmOwnerCommandRuntime.KickResult.NOT_PRESENT;
+        }
+        evacuate(player, "KICKED");
+        return occupants(realm).contains(player)
+                ? eu.avalanche7.paradigmrealms.modules.command.RealmOwnerCommandRuntime.KickResult.EVACUATION_FAILED
+                : eu.avalanche7.paradigmrealms.modules.command.RealmOwnerCommandRuntime.KickResult.KICKED;
+    }
+
+    public void rememberReturn(ServerPlayerEntity player) {
+        rememberIfSafe(player);
+    }
+
+    public TeleportResult leaveForeignRealm(UUID playerId) {
+        ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerId);
+        if (player == null) return TeleportResult.WORLD_UNAVAILABLE;
+        Realm owned = runtime.repository().findByOwner(playerId).orElse(null);
+        if (owned != null) {
+            TeleportResult home = teleports.teleportToRealm(playerId, owned);
+            if (home == TeleportResult.SUCCESS) return home;
+        }
+        SafeLocation previous = lastAllowed.remove(playerId);
+        if (previous != null && tryLastAllowed(player, previous)) return TeleportResult.SUCCESS;
+        return teleports.teleportToOverworldSpawn(playerId);
+    }
+
+    public List<RealmOwnerCommandRuntime.Occupant> occupantsFor(UUID actor) {
+        Realm realm = runtime.commonManagedRealm(actor).orElse(null);
+        if (realm == null) return List.of();
+        RealmAccessService access = new RealmAccessService();
+        return occupants(realm).stream()
+                .map(player -> new RealmOwnerCommandRuntime.Occupant(
+                        player.getUuid(), access.roleOf(realm, player.getUuid())))
+                .toList();
+    }
+
+    private ArrayList<ServerPlayerEntity> occupants(Realm source) {
+        ArrayList<ServerPlayerEntity> result = new ArrayList<>();
+        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            if (!isRealms(player.getWorld())) continue;
+            var match = protection.index().resolve(new BlockCoordinate(
+                    player.getBlockX(), player.getBlockY(), player.getBlockZ()));
+            if (match.realm().map(realm -> realm.id().equals(source.id())).orElse(false)) result.add(player);
+        }
+        return result;
     }
 
     private void evacuate(ServerPlayerEntity player, String reason) {

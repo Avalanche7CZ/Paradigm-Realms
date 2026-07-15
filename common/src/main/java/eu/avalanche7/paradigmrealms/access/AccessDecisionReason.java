@@ -2,8 +2,10 @@ package eu.avalanche7.paradigmrealms.access;
 
 public enum AccessDecisionReason {
     ALLOWED_OWNER,
+    ALLOWED_MANAGER,
     ALLOWED_MEMBER,
     ALLOWED_PUBLIC_VISITOR,
+    BANNED,
     REALM_NOT_ACTIVE,
     PRIVATE_REALM,
     VISITOR_CANNOT_BUILD,

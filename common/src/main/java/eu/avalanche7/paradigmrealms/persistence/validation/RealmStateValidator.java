@@ -17,6 +17,7 @@ import eu.avalanche7.paradigmrealms.membership.RealmInvitation;
 import eu.avalanche7.paradigmrealms.persistence.dto.RealmInvitationDtoV1;
 import eu.avalanche7.paradigmrealms.persistence.dto.RealmDtoV1;
 import eu.avalanche7.paradigmrealms.persistence.dto.RealmStateDtoV1;
+import eu.avalanche7.paradigmrealms.ownership.RealmOwnershipTransfer;
 
 public final class RealmStateValidator {
     private final RealmDtoMapper mapper;
@@ -29,11 +30,14 @@ public final class RealmStateValidator {
         List<ValidationIssue> issues = new ArrayList<>();
         List<Realm> realms = new ArrayList<>();
         List<RealmInvitation> invitations = new ArrayList<>();
-        if (state.schemaVersion() != SchemaVersion.CURRENT.value()) {
+        List<RealmOwnershipTransfer> transfers = new ArrayList<>();
+        if (state.schemaVersion() != SchemaVersion.V1.value()
+                && state.schemaVersion() != SchemaVersion.CURRENT.value()) {
             String code = state.schemaVersion() > SchemaVersion.CURRENT.value()
                     ? "FUTURE_SCHEMA" : "UNMIGRATED_SCHEMA";
             issues.add(ValidationIssue.error(code, "root.schema_version",
-                    "expected schema 1 but found " + state.schemaVersion()));
+                    "expected schema " + SchemaVersion.CURRENT.value() + " or an upgradeable schema 1 but found "
+                            + state.schemaVersion()));
         }
         if (state.revision() < 0) {
             issues.add(ValidationIssue.error("INVALID_REVISION", "root.revision",
@@ -57,10 +61,12 @@ public final class RealmStateValidator {
             ConversionResult<Realm> converted = mapper.toDomain(dto, path);
             issues.addAll(converted.issues());
             converted.value().ifPresent(realm -> {
-                Long previous = owners.putIfAbsent(realm.owner().uuid(), realm.id().value());
-                if (previous != null) {
-                    issues.add(ValidationIssue.error("DUPLICATE_OWNER", path + ".owner_uuid",
-                            "owner already has realm " + previous));
+                if (realm.state() == eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState.ACTIVE) {
+                    Long previous = owners.putIfAbsent(realm.owner().uuid(), realm.id().value());
+                    if (previous != null) {
+                        issues.add(ValidationIssue.error("DUPLICATE_ACTIVE_OWNER", path + ".owner_uuid",
+                                "owner already has active realm " + previous));
+                    }
                 }
                 realms.add(realm);
             });
@@ -69,21 +75,6 @@ public final class RealmStateValidator {
         if (maximumId >= state.nextRealmId()) {
             issues.add(ValidationIssue.error("NEXT_ID_NOT_MONOTONIC", "root.next_realm_id",
                     "next realm ID must be greater than every persisted realm ID"));
-        }
-
-        for (int i = 0; i < realms.size(); i++) {
-            for (int j = i + 1; j < realms.size(); j++) {
-                Realm left = realms.get(i);
-                Realm right = realms.get(j);
-                if (left.allocation().cellBounds().overlaps(right.allocation().cellBounds())) {
-                    issues.add(ValidationIssue.error("OVERLAPPING_CELLS", "root.realms",
-                            "realm " + left.id() + " overlaps realm " + right.id()));
-                }
-                if (left.allocation().buildableBounds().overlaps(right.allocation().buildableBounds())) {
-                    issues.add(ValidationIssue.error("OVERLAPPING_BUILDABLE_REGIONS", "root.realms",
-                            "realm " + left.id() + " build bounds overlap realm " + right.id()));
-                }
-            }
         }
 
         Map<Long, Realm> realmsById = new HashMap<>();
@@ -124,6 +115,34 @@ public final class RealmStateValidator {
                 issues.add(ValidationIssue.error("MALFORMED_INVITATION", path, exception.getMessage()));
             }
         }
-        return new ValidatedRealmState(realms, invitations, new ValidationReport(issues));
+        Set<UUID> transferActors = new HashSet<>();
+        Set<Long> transferRealms = new HashSet<>();
+        for (int i = 0; i < state.ownershipTransfers().size(); i++) {
+            var dto = state.ownershipTransfers().get(i);
+            String path = "root.ownership_transfers[" + i + ']';
+            try {
+                UUID operation = UUID.fromString(dto.operationUuid());
+                UUID owner = UUID.fromString(dto.currentOwnerUuid());
+                UUID target = UUID.fromString(dto.targetUuid());
+                Realm realm = realmsById.get(dto.realmId());
+                if (realm == null || realm.state() != eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState.ACTIVE) {
+                    throw new IllegalArgumentException("transfer requires an active realm");
+                }
+                if (!realm.owner().uuid().equals(owner)) {
+                    throw new IllegalArgumentException("transfer owner does not match realm owner");
+                }
+                if (!transferRealms.add(dto.realmId()) || !transferActors.add(owner) || !transferActors.add(target)) {
+                    throw new IllegalArgumentException("player or realm has multiple ownership transfers");
+                }
+                transfers.add(new RealmOwnershipTransfer(
+                        operation, new RealmId(dto.realmId()), owner, target,
+                        dto.currentOwnerName(), dto.targetName(),
+                        new CreationTimestamp(dto.createdAtEpochMs()),
+                        new CreationTimestamp(dto.expiresAtEpochMs())));
+            } catch (IllegalArgumentException exception) {
+                issues.add(ValidationIssue.error("MALFORMED_OWNERSHIP_TRANSFER", path, exception.getMessage()));
+            }
+        }
+        return new ValidatedRealmState(realms, invitations, transfers, new ValidationReport(issues));
     }
 }

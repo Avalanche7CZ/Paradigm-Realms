@@ -61,11 +61,215 @@ public final class RealmAdminCommandModule {
                                                 context.source(), runtime, messages,
                                                 context.longValue("realmId"))))))
                 .then(commands.literal("validate")
-                        .requires(source -> allowed(source, permissions, RealmPermissionNodes.ADMIN_INSPECT))
+                        .requires(source -> allowed(source, permissions, RealmPermissionNodes.ADMIN_VALIDATE))
                         .executes(context -> validate(context.source(), runtime, messages)))
+                .then(repair(commands, runtime, permissions))
+                .then(commands.literal("support")
+                        .requires(source -> allowed(source, permissions, RealmPermissionNodes.ADMIN_SUPPORT))
+                        .then(commands.literal("export")
+                                .executes(context -> supportExport(context.source(), runtime))))
+                .then(commands.literal("config")
+                        .requires(source -> allowed(source, permissions, RealmPermissionNodes.ADMIN_CONFIG))
+                        .then(commands.literal("validate")
+                                .executes(context -> config(context.source(), runtime, false)))
+                        .then(commands.literal("reload")
+                                .executes(context -> config(context.source(), runtime, true))))
+                .then(realmLifecycle(commands, runtime, permissions, messages))
                 .then(presets(commands, runtime, permissions, messages))
                 .then(bypass(commands, runtime, permissions));
         commands.register(commands.literal("realms").then(admin));
+    }
+
+    private static CommandBuilder repair(
+            CommandPlatform commands, Supplier<? extends RealmAdminCommandRuntime> runtime,
+            CommandPermissionGate permissions) {
+        return commands.literal("repair")
+                .requires(source -> allowed(source, permissions, RealmPermissionNodes.ADMIN_REPAIR))
+                .then(commands.literal("preview")
+                        .executes(context -> repairPreview(context.source(), runtime)))
+                .then(commands.literal("indexes")
+                        .executes(context -> repairIndexes(context.source(), runtime)))
+                .then(commands.literal("stale-sessions")
+                        .executes(context -> repairStaleSessions(context.source(), runtime)))
+                .then(commands.literal("expired-operations")
+                        .executes(context -> repairExpiredOperations(context.source(), runtime)));
+    }
+
+    private static int repairPreview(
+            CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier) {
+        requireRuntime(source, supplier).repairPreview().forEach(source::sendFeedback);
+        return 1;
+    }
+
+    private static int repairIndexes(
+            CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier) {
+        if (!requireRuntime(source, supplier).repairIndexes()) {
+            source.sendError("Index repair refused because authoritative state is invalid.");
+            return 0;
+        }
+        source.sendFeedback("Derived indexes rebuilt from validated authoritative records.");
+        return 1;
+    }
+
+    private static int repairStaleSessions(
+            CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier) {
+        int removed = requireRuntime(source, supplier).repairStaleSessions();
+        source.sendFeedback("Removed " + removed + " stale session entries.");
+        return 1;
+    }
+
+    private static int repairExpiredOperations(
+            CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier) {
+        int removed = requireRuntime(source, supplier).repairExpiredOperations();
+        source.sendFeedback("Removed " + removed + " expired operation records.");
+        return 1;
+    }
+
+    private static int supportExport(
+            CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier) {
+        var result = requireRuntime(source, supplier).exportSupportBundle();
+        if (result.isEmpty()) {
+            source.sendError("Support export failed. See the server log for the bounded failure reason.");
+            return 0;
+        }
+        source.sendFeedback("Support bundle created at " + result.orElseThrow());
+        return 1;
+    }
+
+    private static int config(
+            CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier, boolean reload) {
+        var result = reload ? requireRuntime(source, supplier).reloadConfig()
+                : requireRuntime(source, supplier).validateConfig();
+        result.applied().forEach(value -> source.sendFeedback("Applied: " + value));
+        result.deferred().forEach(value -> source.sendFeedback("Deferred: " + value));
+        result.restartRequired().forEach(value -> source.sendFeedback("Restart required: " + value));
+        result.rejected().forEach(value -> source.sendError("Rejected: " + value));
+        return result.valid() ? 1 : 0;
+    }
+
+    private static CommandBuilder realmLifecycle(
+            CommandPlatform commands, Supplier<? extends RealmAdminCommandRuntime> runtime,
+            CommandPermissionGate permissions, CommandMessageService messages) {
+        CommandBuilder archives = commands.literal("archives")
+                .requires(source -> allowed(source, permissions, RealmPermissionNodes.ADMIN_ARCHIVES))
+                .then(commands.literal("list")
+                        .executes(context -> archiveList(context.source(), runtime, messages)))
+                .then(commands.literal("info")
+                        .then(realmIdArgument(commands, runtime, true)
+                                .executes(context -> archiveInfo(context.source(), runtime, messages,
+                                        context.longValue("realmId")))))
+                .then(commands.literal("restore")
+                        .then(realmIdArgument(commands, runtime, true)
+                                .executes(context -> archiveRestore(context.source(), runtime,
+                                        context.longValue("realmId")))));
+        CommandBuilder operation = commands.literal("operation")
+                .requires(source -> allowed(source, permissions, RealmPermissionNodes.ADMIN_OPERATIONS))
+                .then(commands.literal("info")
+                        .then(realmIdArgument(commands, runtime, false)
+                                .executes(context -> operationInfo(context.source(), runtime,
+                                        context.longValue("realmId")))))
+                .then(commands.literal("retry")
+                        .then(realmIdArgument(commands, runtime, false)
+                                .executes(context -> operationRetry(context.source(), runtime,
+                                        context.longValue("realmId")))));
+        return commands.literal("realm").then(archives).then(operation);
+    }
+
+    private static CommandBuilder realmIdArgument(
+            CommandPlatform commands, Supplier<? extends RealmAdminCommandRuntime> runtime, boolean archived) {
+        return commands.argument("realmId", CommandArgument.longArgument(1, RealmAllocator.MAX_REALM_ID))
+                .suggests((context, input) -> {
+                    RealmAdminCommandRuntime value = runtimeValue(runtime);
+                    if (value == null) return List.of();
+                    return value.inspectRealms().stream()
+                            .filter(realm -> archived
+                                    ? realm.state() == eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState.ARCHIVED
+                                    : realm.lifecycleOperation().isPresent())
+                            .map(realm -> Long.toString(realm.id().value())).toList();
+                });
+    }
+
+    private static int archiveList(
+            CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier,
+            CommandMessageService messages) {
+        RealmAdminCommandRuntime runtime = requireRuntime(source, supplier);
+        if (runtime == null) return 0;
+        List<Realm> archives = runtime.inspectRealms().stream()
+                .filter(realm -> realm.state()
+                        == eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState.ARCHIVED)
+                .toList();
+        feedback(source, messages, "Archived realms: " + archives.size());
+        archives.forEach(realm -> feedback(source, messages, summary(realm)
+                + " archivedAt=" + realm.archivedAt().map(Object::toString).orElse("unknown")
+                + " replacedBy=" + realm.replacedBy().map(Object::toString).orElse("none")));
+        return 1;
+    }
+
+    private static int archiveInfo(
+            CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier,
+            CommandMessageService messages, long id) {
+        RealmAdminCommandRuntime runtime = requireRuntime(source, supplier);
+        if (runtime == null) return 0;
+        Realm realm = runtime.inspectRealm(new RealmId(id)).orElse(null);
+        if (realm == null || realm.state()
+                != eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState.ARCHIVED) {
+            source.sendError("That realm is not archived.");
+            return 0;
+        }
+        feedback(source, messages, summary(realm));
+        feedback(source, messages, "allocation=" + realm.allocation().cell()
+                + " archivedAt=" + realm.archivedAt().orElseThrow()
+                + " replacementOf=" + realm.replacementOf().map(Object::toString).orElse("none")
+                + " replacedBy=" + realm.replacedBy().map(Object::toString).orElse("none"));
+        return 1;
+    }
+
+    private static int archiveRestore(
+            CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier, long id) {
+        RealmAdminCommandRuntime runtime = requireRuntime(source, supplier);
+        if (runtime == null) return 0;
+        var result = runtime.restoreArchive(new RealmId(id));
+        if (result.status()
+                != eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.RESTORED) {
+            source.sendError("Archive restore rejected: " + result.status());
+            return 0;
+        }
+        source.sendFeedback("Archived realm " + id + " restored without changing its allocation.");
+        return 1;
+    }
+
+    private static int operationInfo(
+            CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier, long id) {
+        RealmAdminCommandRuntime runtime = requireRuntime(source, supplier);
+        if (runtime == null) return 0;
+        Realm realm = runtime.inspectRealm(new RealmId(id)).orElse(null);
+        if (realm == null || realm.lifecycleOperation().isEmpty()) {
+            source.sendError("No lifecycle operation exists for that realm.");
+            return 0;
+        }
+        var operation = realm.lifecycleOperation().orElseThrow();
+        source.sendFeedback("operation=" + operation.operationId() + " kind=" + operation.kind()
+                + " stage=" + operation.stage()
+                + " target=" + operation.targetRealmId().map(Object::toString).orElse("none"));
+        operation.failureCode().ifPresent(code -> source.sendFeedback(
+                "failure=" + code + ": " + operation.failureDetail().orElse("")));
+        return 1;
+    }
+
+    private static int operationRetry(
+            CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier, long id) {
+        RealmAdminCommandRuntime runtime = requireRuntime(source, supplier);
+        if (runtime == null) return 0;
+        var result = runtime.retryRealmOperation(new RealmId(id));
+        if (result.status()
+                == eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.RESET_FAILED_OLD_REALM_PRESERVED
+                || result.status()
+                == eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.NO_REALM) {
+            source.sendError("Lifecycle retry failed: " + result.status());
+            return 0;
+        }
+        source.sendFeedback("Lifecycle retry result: " + result.status());
+        return 1;
     }
 
     private static CommandBuilder presets(

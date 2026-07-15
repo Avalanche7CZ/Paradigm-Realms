@@ -36,6 +36,13 @@ public final class FabricProtectionHooks {
         return current.allowOrNotify(player, world, position, ProtectionAction.FARMLAND_TRAMPLE);
     }
 
+    public static boolean allowMobGrief(Entity entity, World world, BlockPos position) {
+        FabricProtectionService current = service;
+        if (current == null || entity instanceof PlayerEntity) return true;
+        if (FabricProtectionService.responsiblePlayer(entity).isPresent()) return true;
+        return current.mobGriefingAllowed(world, position);
+    }
+
     public static boolean allowPlayerAction(
             ServerPlayerEntity player, World world, BlockPos position, ProtectionAction action) {
         FabricProtectionService current = service;
@@ -70,7 +77,7 @@ public final class FabricProtectionHooks {
                     player != null && current.bypassEnabled(player.getUuid())).allowed();
         }
         boolean allowedOrigin = actorMayModifyOrigin;
-        affected.removeIf(target -> !allowedOrigin || !current.allowsEnvironmental(origin, target));
+        affected.removeIf(target -> !allowedOrigin || !current.allowsExplosion(origin, target));
     }
 
     public static boolean allowPiston(

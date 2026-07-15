@@ -3,9 +3,9 @@
   "id": "paradigm_realms",
   "version": "${version}",
   "name": "Paradigm Realms",
-  "description": "Server-side shared realm and exploration dimensions.",
+  "description": "Server-side protected personal realms and a safely resettable shared exploration world.",
   "authors": ["Avalanche7CZ"],
-  "license": "All-Rights-Reserved",
+  "license": "CC-BY-NC-ND-4.0",
   "environment": "server",
   "entrypoints": {
     "server": [

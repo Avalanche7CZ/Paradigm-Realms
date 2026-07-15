@@ -11,6 +11,9 @@ import eu.avalanche7.paradigmrealms.persistence.codec.RealmSchemaV1Codec;
 import eu.avalanche7.paradigmrealms.persistence.codec.MalformedStorageException;
 import eu.avalanche7.paradigmrealms.persistence.data.StorageValue;
 import eu.avalanche7.paradigmrealms.persistence.dto.RealmStateDtoV1;
+import eu.avalanche7.paradigmrealms.persistence.migration.MigrationRegistry;
+import eu.avalanche7.paradigmrealms.persistence.migration.RealmSchemaV1ToV2Migration;
+import eu.avalanche7.paradigmrealms.domain.SchemaVersion;
 import eu.avalanche7.paradigmrealms.persistence.validation.ValidationIssue;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.AbstractNbtNumber;
@@ -58,13 +61,33 @@ public final class RealmPersistentState extends PersistentState {
         Objects.requireNonNull(root, "root");
         try {
             StorageNbt nbtAdapter = new StorageNbt();
-            RealmStateDtoV1 decoded = new RealmSchemaV1Codec().decode(nbtAdapter.fromNbt(root));
-            return new RealmPersistentState(decoded, List.of(), true, null);
+            StorageValue.ObjectValue storage = nbtAdapter.fromNbt(root);
+            int sourceSchema = schemaVersion(storage);
+            StorageValue.ObjectValue migrated = migrate(storage, sourceSchema);
+            RealmStateDtoV1 decoded = new RealmSchemaV1Codec().decode(migrated);
+            RealmPersistentState state = new RealmPersistentState(decoded, List.of(), true, null);
+            if (sourceSchema < SchemaVersion.CURRENT.value()) state.markDirty();
+            return state;
         } catch (IllegalArgumentException exception) {
             ValidationIssue issue = ValidationIssue.error(
                     "MALFORMED_NBT", "root", exception.getMessage());
             return new RealmPersistentState(RealmStateDtoV1.empty(), List.of(issue), false, root.copy());
         }
+    }
+
+    private static int schemaVersion(StorageValue.ObjectValue root) {
+        StorageValue value = root.get("schema_version");
+        if (!(value instanceof StorageValue.LongValue number)) {
+            throw new MalformedStorageException("root.schema_version", "expected integer");
+        }
+        return Math.toIntExact(number.value());
+    }
+
+    private static StorageValue.ObjectValue migrate(StorageValue.ObjectValue source, int sourceSchema) {
+        if (sourceSchema >= SchemaVersion.CURRENT.value()) return source;
+        MigrationRegistry migrations = new MigrationRegistry();
+        migrations.register(new RealmSchemaV1ToV2Migration());
+        return migrations.migrate(source, sourceSchema, SchemaVersion.CURRENT.value());
     }
 
     public StateLoadResult loadResult() {
@@ -166,7 +189,7 @@ public final class RealmPersistentState extends PersistentState {
         }
 
         private static boolean isUuidPath(String path) {
-            return path.endsWith("_uuid") || path.matches(".*\\.(members|visitors)\\[\\d+]");
+            return path.endsWith("_uuid") || path.matches(".*\\.(members|visitors|managers)\\[\\d+]");
         }
     }
 }

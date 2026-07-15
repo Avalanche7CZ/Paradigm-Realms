@@ -1,0 +1,72 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: Paradigm-Realms
+      - uses: actions/checkout@v4
+        with:
+          repository: Avalanche7CZ/Paradigm
+          ref: 4b2e7c3cd2e8526060f8bb3d8edad4d866646b63
+          path: Paradigm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Build companion API
+        working-directory: Paradigm
+        run: ./gradlew :common:apiJar --no-daemon --console=plain
+      - name: Clean aggregate build
+        working-directory: Paradigm-Realms
+        run: ./gradlew clean build --no-daemon --console=plain --warning-mode all
+      - name: Whitespace audit
+        working-directory: Paradigm-Realms
+        run: git diff --check
+      - name: Common prohibited imports
+        working-directory: Paradigm-Realms
+        run: |
+          ! rg -n '^(import|.*Class\.forName\().*(net\.minecraft|net\.fabricmc|com\.mojang\.brigadier|eu\.avalanche7\.paradigm\.api|net\.luckperms)' common/src/main
+      - name: Common dependency audit
+        working-directory: Paradigm-Realms
+        run: |
+          jdeps -s common/build/libs/common-1.0.0-rc.1.jar | tee common-jdeps.txt
+          ! rg '(minecraft|fabric|brigadier|luckperms|paradigm\.api)' common-jdeps.txt
+      - name: Server-only and networking audit
+        working-directory: Paradigm-Realms
+        run: |
+          unzip -p Fabric-1.21.1/build/libs/paradigm-realms-fabric-1.21.1-1.0.0-rc.1.jar fabric.mod.json | tee fabric-mod.json
+          rg '"environment"\s*:\s*"server"' fabric-mod.json
+          ! rg '"client"\s*:' fabric-mod.json
+          ! rg -n '(ClientModInitializer|ClientPlayNetworking|ServerPlayNetworking|CustomPayload|PayloadTypeRegistry)' Fabric-1.21.1/src common/src
+      - name: Jar content audit
+        working-directory: Paradigm-Realms
+        run: |
+          jar tf Fabric-1.21.1/build/libs/paradigm-realms-fabric-1.21.1-1.0.0-rc.1.jar | tee release-contents.txt
+          ! rg '^(eu/avalanche7/paradigm/api|com/sk89q/worldedit|fi/dy/masa/litematica|fi/dy/masa/malilib)/' release-contents.txt
+          test "$(rg -c '^eu/avalanche7/paradigmrealms/platform/RealmsPlatformAdapter.class$' release-contents.txt)" = 1
+          test "$(rg -c '^eu/avalanche7/paradigmrealms/domain/SchemaVersion.class$' release-contents.txt)" = 1
+          ! rg '^META-INF/jars/common-' release-contents.txt
+      - name: Reset tool dependency audit
+        working-directory: Paradigm-Realms
+        run: |
+          jdeps -s Fabric-1.21.1/build/libs/paradigm-realms-fabric-1.21.1-1.0.0-rc.1-wilds-reset-tool.jar | tee reset-tool-jdeps.txt
+          ! rg '(net\.minecraft|net\.fabricmc)' reset-tool-jdeps.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paradigm-realms-1.0.0-rc.1
+          path: |
+            Paradigm-Realms/Fabric-1.21.1/build/libs/paradigm-realms-fabric-1.21.1-1.0.0-rc.1.jar
+            Paradigm-Realms/Fabric-1.21.1/build/libs/paradigm-realms-fabric-1.21.1-1.0.0-rc.1-wilds-reset-tool.jar

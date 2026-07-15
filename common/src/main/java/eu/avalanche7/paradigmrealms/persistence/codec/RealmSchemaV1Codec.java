@@ -8,10 +8,13 @@ import java.util.Optional;
 
 import eu.avalanche7.paradigmrealms.persistence.data.StorageValue;
 import eu.avalanche7.paradigmrealms.persistence.dto.RealmDtoV1;
+import eu.avalanche7.paradigmrealms.persistence.dto.RealmBanDtoV1;
 import eu.avalanche7.paradigmrealms.persistence.dto.RealmFailureDtoV1;
 import eu.avalanche7.paradigmrealms.persistence.dto.RealmInvitationDtoV1;
+import eu.avalanche7.paradigmrealms.persistence.dto.RealmLifecycleOperationDtoV1;
 import eu.avalanche7.paradigmrealms.persistence.dto.RealmOperationDtoV1;
 import eu.avalanche7.paradigmrealms.persistence.dto.RealmStateDtoV1;
+import eu.avalanche7.paradigmrealms.persistence.dto.RealmOwnershipTransferDtoV1;
 
 public final class RealmSchemaV1Codec {
     public StorageValue.ObjectValue encode(RealmStateDtoV1 state) {
@@ -23,6 +26,8 @@ public final class RealmSchemaV1Codec {
                 .<StorageValue>map(this::encodeRealm).toList()));
         root.put("invitations", new StorageValue.ListValue(state.invitations().stream()
                 .<StorageValue>map(this::encodeInvitation).toList()));
+        root.put("ownership_transfers", new StorageValue.ListValue(state.ownershipTransfers().stream()
+                .<StorageValue>map(this::encodeTransfer).toList()));
         return new StorageValue.ObjectValue(root);
     }
 
@@ -53,7 +58,20 @@ public final class RealmSchemaV1Codec {
                 invitations.add(decodeInvitation(object, "root.invitations[" + i + "]"));
             }
         }
-        return new RealmStateDtoV1(schema, revision, nextRealmId, decoded, invitations);
+        List<RealmOwnershipTransferDtoV1> transfers = new ArrayList<>();
+        StorageValue rawTransfers = root.get("ownership_transfers");
+        if (rawTransfers != null) {
+            if (!(rawTransfers instanceof StorageValue.ListValue list)) {
+                throw malformed("root.ownership_transfers", "expected list");
+            }
+            for (int i = 0; i < list.values().size(); i++) {
+                if (!(list.values().get(i) instanceof StorageValue.ObjectValue object)) {
+                    throw malformed("root.ownership_transfers[" + i + "]", "expected object");
+                }
+                transfers.add(decodeTransfer(object, "root.ownership_transfers[" + i + "]"));
+            }
+        }
+        return new RealmStateDtoV1(schema, revision, nextRealmId, decoded, invitations, transfers);
     }
 
     public StorageValue.ObjectValue encodeRealm(RealmDtoV1 realm) {
@@ -81,8 +99,23 @@ public final class RealmSchemaV1Codec {
         value.put("preset_id", string(realm.presetId()));
         value.put("members", strings(realm.memberUuids()));
         value.put("visitors", strings(realm.visitorUuids()));
+        value.put("managers", strings(realm.managerUuids()));
+        value.put("bans", new StorageValue.ListValue(realm.bans().stream()
+                .<StorageValue>map(this::encodeBan).toList()));
         value.put("access_policy", string(realm.accessPolicy()));
         value.put("created_at_epoch_ms", number(realm.createdAtEpochMs()));
+        value.put("display_name", string(realm.displayName()));
+        value.put("description", string(realm.description()));
+        value.put("listed", number(realm.listed() ? 1 : 0));
+        value.put("pvp", number(realm.pvp() ? 1 : 0));
+        value.put("explosions", number(realm.explosions() ? 1 : 0));
+        value.put("mob_griefing", number(realm.mobGriefing() ? 1 : 0));
+        value.put("visitor_interaction", number(realm.visitorInteraction() ? 1 : 0));
+        value.put("visitor_containers", number(realm.visitorContainers() ? 1 : 0));
+        realm.replacementOfRealmId().ifPresent(id -> value.put("replacement_of_realm_id", number(id)));
+        realm.replacedByRealmId().ifPresent(id -> value.put("replaced_by_realm_id", number(id)));
+        realm.archivedAtEpochMs().ifPresent(at -> value.put("archived_at_epoch_ms", number(at)));
+        realm.lifecycleOperation().ifPresent(operation -> value.put("lifecycle_operation", encodeLifecycleOperation(operation)));
         realm.operation().ifPresent(operation -> value.put("operation", encodeOperation(operation)));
         realm.failure().ifPresent(failure -> value.put("failure", encodeFailure(failure)));
         return new StorageValue.ObjectValue(value);
@@ -105,6 +138,14 @@ public final class RealmSchemaV1Codec {
             }
             failure = Optional.of(decodeFailure(object, path + ".failure"));
         }
+        Optional<RealmLifecycleOperationDtoV1> lifecycleOperation = Optional.empty();
+        StorageValue rawLifecycleOperation = value.get("lifecycle_operation");
+        if (rawLifecycleOperation != null) {
+            if (!(rawLifecycleOperation instanceof StorageValue.ObjectValue object)) {
+                throw malformed(path + ".lifecycle_operation", "expected object");
+            }
+            lifecycleOperation = Optional.of(decodeLifecycleOperation(object, path + ".lifecycle_operation"));
+        }
         return new RealmDtoV1(
                 intValue(value, "record_schema", path),
                 longValue(value, "id", path),
@@ -122,7 +163,70 @@ public final class RealmSchemaV1Codec {
                 stringValue(value, "preset_id", path),
                 stringList(value, "members", path), stringList(value, "visitors", path),
                 stringValue(value, "access_policy", path),
-                longValue(value, "created_at_epoch_ms", path), operation, failure);
+                longValue(value, "created_at_epoch_ms", path), operation, failure,
+                optionalString(value, "display_name", "Realm #" + longValue(value, "id", path), path),
+                optionalString(value, "description", "", path), optionalBoolean(value, "listed", false, path),
+                optionalStringList(value, "managers", path), decodeBans(value, path),
+                optionalBoolean(value, "pvp", false, path), optionalBoolean(value, "explosions", false, path),
+                optionalBoolean(value, "mob_griefing", false, path),
+                optionalBoolean(value, "visitor_interaction", false, path),
+                optionalBoolean(value, "visitor_containers", false, path),
+                optionalLong(value, "replacement_of_realm_id", path),
+                optionalLong(value, "replaced_by_realm_id", path), optionalLong(value, "archived_at_epoch_ms", path),
+                lifecycleOperation);
+    }
+
+    private StorageValue.ObjectValue encodeBan(RealmBanDtoV1 ban) {
+        Map<String, StorageValue> value = new LinkedHashMap<>();
+        value.put("player_uuid", string(ban.playerUuid()));
+        value.put("player_name_snapshot", string(ban.playerNameSnapshot()));
+        value.put("actor_uuid", string(ban.actorUuid()));
+        ban.reason().ifPresent(reason -> value.put("reason", string(reason)));
+        value.put("created_at_epoch_ms", number(ban.createdAtEpochMs()));
+        return new StorageValue.ObjectValue(value);
+    }
+
+    private List<RealmBanDtoV1> decodeBans(StorageValue.ObjectValue value, String path) {
+        StorageValue raw = value.get("bans");
+        if (raw == null) return List.of();
+        if (!(raw instanceof StorageValue.ListValue list)) {
+            throw malformed(path + ".bans", "expected list");
+        }
+        List<RealmBanDtoV1> bans = new ArrayList<>(list.values().size());
+        for (int i = 0; i < list.values().size(); i++) {
+            if (!(list.values().get(i) instanceof StorageValue.ObjectValue ban)) {
+                throw malformed(path + ".bans[" + i + ']', "expected object");
+            }
+            String banPath = path + ".bans[" + i + ']';
+            bans.add(new RealmBanDtoV1(stringValue(ban, "player_uuid", banPath),
+                    stringValue(ban, "player_name_snapshot", banPath),
+                    stringValue(ban, "actor_uuid", banPath), optionalStringValue(ban, "reason", banPath),
+                    longValue(ban, "created_at_epoch_ms", banPath)));
+        }
+        return List.copyOf(bans);
+    }
+
+    private StorageValue.ObjectValue encodeLifecycleOperation(RealmLifecycleOperationDtoV1 operation) {
+        Map<String, StorageValue> value = new LinkedHashMap<>();
+        value.put("operation_uuid", string(operation.operationUuid()));
+        value.put("kind", string(operation.kind()));
+        value.put("stage", string(operation.stage()));
+        operation.requestedPresetId().ifPresent(preset -> value.put("requested_preset_id", string(preset)));
+        operation.targetRealmId().ifPresent(target -> value.put("target_realm_id", number(target)));
+        value.put("requested_at_epoch_ms", number(operation.requestedAtEpochMs()));
+        value.put("updated_at_epoch_ms", number(operation.updatedAtEpochMs()));
+        operation.failureCode().ifPresent(code -> value.put("failure_code", string(code)));
+        operation.failureDetail().ifPresent(detail -> value.put("failure_detail", string(detail)));
+        return new StorageValue.ObjectValue(value);
+    }
+
+    private RealmLifecycleOperationDtoV1 decodeLifecycleOperation(StorageValue.ObjectValue value, String path) {
+        return new RealmLifecycleOperationDtoV1(
+                stringValue(value, "operation_uuid", path), stringValue(value, "kind", path),
+                stringValue(value, "stage", path), optionalStringValue(value, "requested_preset_id", path),
+                optionalLong(value, "target_realm_id", path), longValue(value, "requested_at_epoch_ms", path),
+                longValue(value, "updated_at_epoch_ms", path), optionalStringValue(value, "failure_code", path),
+                optionalStringValue(value, "failure_detail", path));
     }
 
     private StorageValue.ObjectValue encodeOperation(RealmOperationDtoV1 operation) {
@@ -181,6 +285,27 @@ public final class RealmSchemaV1Codec {
                 stringValue(value, "invited_name_snapshot", path),
                 longValue(value, "created_at_epoch_ms", path),
                 longValue(value, "expires_at_epoch_ms", path));
+    }
+
+    private StorageValue.ObjectValue encodeTransfer(RealmOwnershipTransferDtoV1 transfer) {
+        Map<String, StorageValue> value = new LinkedHashMap<>();
+        value.put("operation_uuid", string(transfer.operationUuid()));
+        value.put("realm_id", number(transfer.realmId()));
+        value.put("current_owner_uuid", string(transfer.currentOwnerUuid()));
+        value.put("target_uuid", string(transfer.targetUuid()));
+        value.put("current_owner_name", string(transfer.currentOwnerName()));
+        value.put("target_name", string(transfer.targetName()));
+        value.put("created_at_epoch_ms", number(transfer.createdAtEpochMs()));
+        value.put("expires_at_epoch_ms", number(transfer.expiresAtEpochMs()));
+        return new StorageValue.ObjectValue(value);
+    }
+
+    private RealmOwnershipTransferDtoV1 decodeTransfer(StorageValue.ObjectValue value, String path) {
+        return new RealmOwnershipTransferDtoV1(
+                stringValue(value, "operation_uuid", path), longValue(value, "realm_id", path),
+                stringValue(value, "current_owner_uuid", path), stringValue(value, "target_uuid", path),
+                stringValue(value, "current_owner_name", path), stringValue(value, "target_name", path),
+                longValue(value, "created_at_epoch_ms", path), longValue(value, "expires_at_epoch_ms", path));
     }
 
     private static StorageValue.StringValue string(String value) {
@@ -263,6 +388,42 @@ public final class RealmSchemaV1Codec {
             result.add(string.value());
         }
         return List.copyOf(result);
+    }
+
+    private static List<String> optionalStringList(StorageValue.ObjectValue object, String key, String path) {
+        return object.get(key) == null ? List.of() : stringList(object, key, path);
+    }
+
+    private static String optionalString(
+            StorageValue.ObjectValue object, String key, String defaultValue, String path) {
+        StorageValue value = object.get(key);
+        if (value == null) return defaultValue;
+        if (value instanceof StorageValue.StringValue string) return string.value();
+        throw malformed(path + '.' + key, "expected string");
+    }
+
+    private static Optional<String> optionalStringValue(StorageValue.ObjectValue object, String key, String path) {
+        StorageValue value = object.get(key);
+        if (value == null) return Optional.empty();
+        if (value instanceof StorageValue.StringValue string) return Optional.of(string.value());
+        throw malformed(path + '.' + key, "expected string");
+    }
+
+    private static Optional<Long> optionalLong(StorageValue.ObjectValue object, String key, String path) {
+        StorageValue value = object.get(key);
+        if (value == null) return Optional.empty();
+        if (value instanceof StorageValue.LongValue number) return Optional.of(number.value());
+        throw malformed(path + '.' + key, "expected integer");
+    }
+
+    private static boolean optionalBoolean(
+            StorageValue.ObjectValue object, String key, boolean defaultValue, String path) {
+        StorageValue value = object.get(key);
+        if (value == null) return defaultValue;
+        if (value instanceof StorageValue.LongValue number && (number.value() == 0 || number.value() == 1)) {
+            return number.value() == 1;
+        }
+        throw malformed(path + '.' + key, "expected boolean integer");
     }
 
     private static StorageValue required(StorageValue.ObjectValue object, String key, String path) {

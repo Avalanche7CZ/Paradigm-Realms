@@ -30,19 +30,40 @@ public record CommandText(List<Part> parts) {
         }
     }
 
-    public record Part(String text, Optional<Click> click, Optional<String> hover) {
+    public record Part(String text, Optional<Click> click, Optional<String> hover,
+            Optional<Integer> color, boolean bold, boolean underlined, boolean strikethrough) {
         public Part {
             Objects.requireNonNull(text, "text");
             click = Objects.requireNonNull(click, "click");
             hover = Objects.requireNonNull(hover, "hover");
+            color = Objects.requireNonNull(color, "color");
+        }
+
+        public Part(String text, Optional<Click> click, Optional<String> hover) {
+            this(text, click, hover, Optional.empty(), false, false, false);
         }
 
         public static Part literal(String text) {
-            return new Part(text, Optional.empty(), Optional.empty());
+            return new Part(text, Optional.empty(), Optional.empty(), Optional.empty(), false, false, false);
         }
 
         public static Part interactive(String text, ClickAction action, String command, String hover) {
-            return new Part(text, Optional.of(new Click(action, command)), Optional.ofNullable(hover));
+            return new Part(text, Optional.of(new Click(action, command)), Optional.ofNullable(hover),
+                    Optional.empty(), false, false, false);
+        }
+
+        public static Part styled(String text, int color, boolean bold) {
+            return new Part(text, Optional.empty(), Optional.empty(), Optional.of(color), bold, false, false);
+        }
+
+        public static Part styledInteractive(String text, int color, boolean bold, boolean underlined,
+                ClickAction action, String command, String hover) {
+            return new Part(text, Optional.of(new Click(action, command)), Optional.ofNullable(hover),
+                    Optional.of(color), bold, underlined, false);
+        }
+
+        public static Part separator(String text, int color) {
+            return new Part(text, Optional.empty(), Optional.empty(), Optional.of(color), false, false, true);
         }
     }
 }

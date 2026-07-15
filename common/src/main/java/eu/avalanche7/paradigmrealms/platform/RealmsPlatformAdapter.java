@@ -10,4 +10,8 @@ public interface RealmsPlatformAdapter {
     CommandPermissionGate permissions();
     CommandMessageService messages();
     PlayerDirectory players();
+
+    default PlatformMetadata metadata() {
+        return PlatformMetadata.unknown();
+    }
 }

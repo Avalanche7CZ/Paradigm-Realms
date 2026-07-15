@@ -4,13 +4,13 @@ import java.util.List;
 
 public final class RealmPermissionNodes {
     public static final RealmPermissionNode CREATE = node(
-            "paradigmrealms.realm.create", "Allows a player to create their realm.", 0, "realm.create");
+            "paradigm.realms.create", "Allows a player to create their realm.", 0, "realm.create");
     public static final RealmPermissionNode HOME = node(
-            "paradigmrealms.realm.home", "Allows a player to teleport to their realm.", 0, "realm.home");
+            "paradigm.realms.home", "Allows a player to teleport to their realm.", 0, "realm.home");
     public static final RealmPermissionNode SET_SPAWN = node(
-            "paradigmrealms.realm.setspawn", "Allows a player to set their realm spawn.", 0, "realm.setspawn");
+            "paradigm.realms.setspawn", "Allows a player to set their realm spawn.", 0, "realm.setspawn");
     public static final RealmPermissionNode INFO = node(
-            "paradigmrealms.realm.info", "Allows a player to inspect their realm.", 0, "realm.info");
+            "paradigm.realms.info", "Allows a player to inspect their realm.", 0, "realm.info");
     public static final RealmPermissionNode VISIT = node(
             "paradigm.realms.visit", "Allows a player to visit accessible realms.", 0, "realm.visit");
     public static final RealmPermissionNode INVITE = node(
@@ -34,6 +34,32 @@ public final class RealmPermissionNodes {
     public static final RealmPermissionNode PRESET_SELECT = node(
             "paradigm.realms.preset.select", "Allows explicit realm preset selection.", 0,
             "realm.preset.select");
+    public static final RealmPermissionNode RESET = node(
+            "paradigm.realms.reset", "Allows an owner to safely recreate their realm.", 0, "realm.reset");
+    public static final RealmPermissionNode DELETE = node(
+            "paradigm.realms.delete", "Allows an owner to archive their realm.", 0, "realm.delete");
+    public static final RealmPermissionNode NAME = node(
+            "paradigm.realms.name", "Allows an owner to name their realm.", 0, "realm.name");
+    public static final RealmPermissionNode DESCRIPTION = node(
+            "paradigm.realms.description", "Allows an owner to describe their realm.", 0, "realm.description");
+    public static final RealmPermissionNode PUBLIC_LIST = node(
+            "paradigm.realms.public.list", "Allows a player to browse public realms.", 0, "realm.public");
+    public static final RealmPermissionNode LISTING = node(
+            "paradigm.realms.listing", "Allows realm directory listing control.", 0, "realm.listing");
+    public static final RealmPermissionNode KICK = node(
+            "paradigm.realms.kick", "Allows realm occupant kicks.", 0, "realm.kick");
+    public static final RealmPermissionNode BAN = node(
+            "paradigm.realms.ban", "Allows realm ban management.", 0, "realm.ban");
+    public static final RealmPermissionNode ROLE_MANAGE = node(
+            "paradigm.realms.role.manage", "Allows an owner to manage realm roles.", 0, "realm.role");
+    public static final RealmPermissionNode SETTINGS = node(
+            "paradigm.realms.settings", "Allows focused realm setting management.", 0, "realm.settings");
+    public static final RealmPermissionNode TRANSFER = node(
+            "paradigm.realms.transfer", "Allows safe two-party realm ownership transfer.", 0, "realm.transfer");
+    public static final RealmPermissionNode ADMIN_ARCHIVES = node(
+            "paradigm.realms.admin.archives", "Allows archive inspection and restore.", 3, "admin.archives");
+    public static final RealmPermissionNode ADMIN_OPERATIONS = node(
+            "paradigm.realms.admin.operations", "Allows lifecycle operation inspection and retry.", 3, "admin.operations");
     public static final RealmPermissionNode ADMIN_PRESETS = node(
             "paradigm.realms.admin.presets", "Allows realm preset inspection and reload.", 2,
             "admin.presets");
@@ -58,16 +84,27 @@ public final class RealmPermissionNodes {
     public static final RealmPermissionNode ADMIN_WILDS_BACKUPS = node(
             "paradigm.realms.admin.wilds.backups", "Allows validated Wilds backup retention operations.", 4, "admin.wilds.backups");
     public static final RealmPermissionNode ADMIN_INSPECT = node(
-            "paradigmrealms.admin.inspect", "Allows read-only realm administration.", 3, "admin.inspect");
+            "paradigm.realms.admin.inspect", "Allows read-only realm administration.", 3, "admin.inspect");
+    public static final RealmPermissionNode ADMIN_VALIDATE = node(
+            "paradigm.realms.admin.validate", "Allows explicit realm state validation.", 3, "admin.validate");
+    public static final RealmPermissionNode ADMIN_REPAIR = node(
+            "paradigm.realms.admin.repair", "Allows narrow deterministic repairs.", 4, "admin.repair");
+    public static final RealmPermissionNode ADMIN_SUPPORT = node(
+            "paradigm.realms.admin.support", "Allows safe support bundle export.", 4, "admin.support");
+    public static final RealmPermissionNode ADMIN_CONFIG = node(
+            "paradigm.realms.admin.config", "Allows configuration validation and reload.", 4, "admin.config");
     public static final RealmPermissionNode COMPATIBILITY = node(
-            "paradigmrealms.admin.compatibility", "Allows development compatibility teleports.", 4,
+            "paradigm.realms.admin.compatibility", "Allows development compatibility teleports.", 4,
             "admin.compatibility");
 
     public static final List<RealmPermissionNode> ALL = List.of(
             CREATE, HOME, SET_SPAWN, INFO,
             VISIT, INVITE, INVITES, ACCEPT, DECLINE, REMOVE, LEAVE, MEMBERS, ACCESS,
-            PRESETS, PRESET_SELECT, WILDS_ENTER, WILDS_RTP, WILDS_SPAWN, WILDS_INFO,
-            ADMIN_INSPECT, ADMIN_PRESETS, ADMIN_BYPASS,
+            PRESETS, PRESET_SELECT, RESET, DELETE, NAME, DESCRIPTION, PUBLIC_LIST, LISTING, KICK, BAN,
+            ROLE_MANAGE, SETTINGS, TRANSFER, WILDS_ENTER, WILDS_RTP, WILDS_SPAWN, WILDS_INFO,
+            ADMIN_INSPECT, ADMIN_VALIDATE, ADMIN_REPAIR, ADMIN_SUPPORT, ADMIN_CONFIG,
+            ADMIN_PRESETS, ADMIN_BYPASS,
+            ADMIN_ARCHIVES, ADMIN_OPERATIONS,
             ADMIN_WILDS_STATUS, ADMIN_WILDS_VALIDATE, ADMIN_WILDS_MANAGE,
             ADMIN_WILDS_RESET, ADMIN_WILDS_BACKUPS, COMPATIBILITY);
 

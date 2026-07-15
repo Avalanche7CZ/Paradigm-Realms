@@ -64,8 +64,121 @@ public final class RealmPlayerCommandModule {
                         .executes(context -> setSpawn(context.source(), runtime, messages)))
                 .then(commands.literal("info")
                         .requires(source -> allowed(source, permissions, RealmPermissionNodes.INFO))
-                        .executes(context -> info(context.source(), runtime, messages)));
+                        .executes(context -> info(context.source(), runtime, messages)))
+                .then(commands.literal("leave")
+                        .requires(source -> allowed(source, permissions, RealmPermissionNodes.LEAVE))
+                        .executes(context -> leave(context.source(), runtime)))
+                .then(commands.literal("reset")
+                        .requires(source -> allowed(source, permissions, RealmPermissionNodes.RESET))
+                        .executes(context -> requestReset(context.source(), runtime, Optional.empty()))
+                        .then(commands.argument("preset", CommandArgument.greedyString())
+                                .suggests((context, input) -> {
+                                    RealmPlayerCommandRuntime value = runtime.get();
+                                    return value == null ? List.of() : value.selectablePresets().stream()
+                                            .map(preset -> preset.id().value()).toList();
+                                })
+                                .executes(context -> requestReset(context.source(), runtime,
+                                        Optional.of(context.string("preset")))))
+                        .then(commands.literal("confirm").then(commands.argument("token", CommandArgument.word())
+                                .executes(context -> confirmReset(context.source(), runtime,
+                                        context.string("token")))))
+                        .then(commands.literal("cancel")
+                                .executes(context -> cancelReset(context.source(), runtime))))
+                .then(commands.literal("delete")
+                        .requires(source -> allowed(source, permissions, RealmPermissionNodes.DELETE))
+                        .executes(context -> requestDelete(context.source(), runtime))
+                        .then(commands.literal("confirm").then(commands.argument("token", CommandArgument.word())
+                                .executes(context -> confirmDelete(context.source(), runtime,
+                                        context.string("token")))))
+                        .then(commands.literal("cancel")
+                                .executes(context -> cancelDelete(context.source(), runtime))));
         commands.register(root);
+    }
+
+    private static int requestReset(CommandSource source, Supplier<? extends RealmPlayerCommandRuntime> runtimeSupplier,
+            Optional<String> requestedPreset) {
+        RealmPlayerCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
+        PlayerReference player = requirePlayer(source);
+        if (runtime == null || player == null) return 0;
+        PresetSelectionResult selected;
+        try {
+            selected = runtime.selectPreset(requestedPreset.map(RealmPresetId::new));
+        } catch (IllegalArgumentException exception) {
+            source.sendError("Invalid preset identifier.");
+            return 0;
+        }
+        if (!selected.selected()) {
+            source.sendError("Preset unavailable: " + selected.detail());
+            return 0;
+        }
+        Optional<String> token = runtime.requestResetConfirmation(player.uuid(), selected.preset().orElseThrow().id());
+        if (token.isEmpty()) {
+            source.sendError("No active realm is available for reset, or a lifecycle operation is already in progress.");
+            return 0;
+        }
+        source.sendFeedback("Reset will archive the old realm after a replacement is active. Confirm with /realm reset confirm "
+                + token.orElseThrow());
+        return 1;
+    }
+
+    private static int confirmReset(CommandSource source, Supplier<? extends RealmPlayerCommandRuntime> runtimeSupplier,
+            String token) {
+        RealmPlayerCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
+        PlayerReference player = requirePlayer(source);
+        if (runtime == null || player == null) return 0;
+        var result = runtime.confirmReset(player.uuid(), token);
+        if (result.status() != eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.RESET_COMPLETED) {
+            source.sendError("Realm reset was not completed: " + result.status());
+            return 0;
+        }
+        source.sendFeedback("Realm reset completed. Your old realm is archived.");
+        return 1;
+    }
+
+    private static int cancelReset(CommandSource source, Supplier<? extends RealmPlayerCommandRuntime> runtimeSupplier) {
+        RealmPlayerCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
+        PlayerReference player = requirePlayer(source);
+        if (runtime == null || player == null) return 0;
+        runtime.cancelReset(player.uuid());
+        source.sendFeedback("Pending realm reset confirmation cancelled.");
+        return 1;
+    }
+
+    private static int requestDelete(CommandSource source, Supplier<? extends RealmPlayerCommandRuntime> runtimeSupplier) {
+        RealmPlayerCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
+        PlayerReference player = requirePlayer(source);
+        if (runtime == null || player == null) return 0;
+        Optional<String> token = runtime.requestDeleteConfirmation(player.uuid());
+        if (token.isEmpty()) {
+            source.sendError("No active realm is available for deletion, or a lifecycle operation is already in progress.");
+            return 0;
+        }
+        source.sendFeedback("Deletion archives the realm and retains its protected cell. Confirm with /realm delete confirm "
+                + token.orElseThrow());
+        return 1;
+    }
+
+    private static int confirmDelete(CommandSource source, Supplier<? extends RealmPlayerCommandRuntime> runtimeSupplier,
+            String token) {
+        RealmPlayerCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
+        PlayerReference player = requirePlayer(source);
+        if (runtime == null || player == null) return 0;
+        var result = runtime.confirmDelete(player.uuid(), token);
+        if (result.status() != eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.ARCHIVED) {
+            source.sendError("Realm deletion was not completed: " + result.status());
+            return 0;
+        }
+        source.sendFeedback("Realm archived. Its blocks and allocation remain protected.");
+        return 1;
+    }
+
+    private static int cancelDelete(CommandSource source, Supplier<? extends RealmPlayerCommandRuntime> runtimeSupplier) {
+        RealmPlayerCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
+        PlayerReference player = requirePlayer(source);
+        if (runtime == null || player == null) return 0;
+        runtime.cancelDelete(player.uuid());
+        source.sendFeedback("Pending realm deletion confirmation cancelled.");
+        return 1;
     }
 
     private static int create(
@@ -192,6 +305,20 @@ public final class RealmPlayerCommandModule {
         if (!runtime.presetAvailable(value.preset())) {
             source.sendFeedback("Preset metadata is currently unavailable; this does not affect the existing realm.");
         }
+        return 1;
+    }
+
+    private static int leave(
+            CommandSource source, Supplier<? extends RealmPlayerCommandRuntime> runtimeSupplier) {
+        RealmPlayerCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
+        PlayerReference player = requirePlayer(source);
+        if (runtime == null || player == null) return 0;
+        TeleportResult result = runtime.leaveForeignRealm(player.uuid());
+        if (result != TeleportResult.SUCCESS) {
+            source.sendError("Unable to leave the realm safely: " + result);
+            return 0;
+        }
+        source.sendFeedback("You left the realm safely.");
         return 1;
     }
 

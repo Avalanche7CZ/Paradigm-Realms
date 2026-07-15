@@ -27,7 +27,7 @@ import eu.avalanche7.paradigmrealms.platform.wilds.FabricWildsService;
 
 public final class FabricProtectionService {
     private final AtomicReference<RealmRegionIndex> index = new AtomicReference<>(RealmRegionIndex.empty());
-    private final ProtectionPolicyService policy = new ProtectionPolicyService();
+    private final ProtectionPolicyService policy;
     private final RealmSessionBypass bypass;
     private final long denialCooldownMillis;
     private final Map<UUID, Long> lastDenial = new ConcurrentHashMap<>();
@@ -36,9 +36,11 @@ public final class FabricProtectionService {
 
     public FabricProtectionService(
             RealmSessionBypass bypass,
-            long denialCooldownMillis) {
+            long denialCooldownMillis,
+            eu.avalanche7.paradigmrealms.config.RealmSettingsPolicy settingsPolicy) {
         this.bypass = bypass;
         this.denialCooldownMillis = denialCooldownMillis;
+        this.policy = new ProtectionPolicyService(settingsPolicy);
     }
 
     public void replaceIndex(RealmRegionIndex replacement) {
@@ -109,6 +111,11 @@ public final class FabricProtectionService {
         return policy.allowsEnvironmentalMutation(index.get(), coordinate(source), coordinate(target));
     }
 
+    public boolean allowsExplosion(BlockPos origin, BlockPos target) {
+        return policy.explosionsAllowed(index.get(), coordinate(origin))
+                && policy.allowsEnvironmentalMutation(index.get(), coordinate(origin), coordinate(target));
+    }
+
     public boolean allowDamage(Entity target, DamageSource source) {
         Optional<UUID> responsible = responsiblePlayer(source);
         if (responsible.isEmpty()) {
@@ -117,6 +124,11 @@ public final class FabricProtectionService {
         ServerPlayerEntity online = target.getServer() == null
                 ? null : target.getServer().getPlayerManager().getPlayer(responsible.orElseThrow());
         boolean bypassActive = online != null && bypass.enabled(online.getUuid());
+        if (target instanceof ServerPlayerEntity && !bypassActive
+                && !policy.pvpAllowed(index.get(), coordinate(target.getBlockPos()))) {
+            if (online != null) online.sendMessage(Text.literal("PvP is disabled in this realm."), true);
+            return false;
+        }
         FabricWildsService wildsService = wilds;
         if (online != null && wildsService != null
                 && !wildsService.mutationAllowed(online, target.getWorld(), target.getBlockPos())) {
@@ -133,6 +145,11 @@ public final class FabricProtectionService {
     public boolean environmentalMutationAllowed(World world, BlockPos target) {
         FabricWildsService wildsService = wilds;
         return wildsService == null || wildsService.environmentalMutationAllowed(world, target);
+    }
+
+    public boolean mobGriefingAllowed(World world, BlockPos target) {
+        if (!world.getRegistryKey().getValue().toString().equals(DimensionId.REALMS.toString())) return true;
+        return policy.mobGriefingAllowed(index.get(), coordinate(target));
     }
 
     public static Optional<UUID> responsiblePlayer(DamageSource source) {

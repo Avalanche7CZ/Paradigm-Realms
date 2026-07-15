@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import eu.avalanche7.paradigmrealms.domain.RealmPresetId;
 import eu.avalanche7.paradigmrealms.domain.realm.Realm;
+import eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService;
 import eu.avalanche7.paradigmrealms.generation.PresetSelectionConfig;
 import eu.avalanche7.paradigmrealms.generation.PresetSelectionResult;
 import eu.avalanche7.paradigmrealms.generation.RealmPresetDefinition;
@@ -20,5 +21,12 @@ public interface RealmPlayerCommandRuntime {
     Realm createRealm(UUID owner, RealmPresetDefinition preset);
     Optional<Realm> findRealmByOwner(UUID owner);
     TeleportResult teleportHome(UUID player, Realm realm);
+    default TeleportResult leaveForeignRealm(UUID player) { return TeleportResult.WORLD_UNAVAILABLE; }
     SetSpawnResult setSpawn(UUID player);
+    Optional<String> requestResetConfirmation(UUID owner, RealmPresetId preset);
+    RealmLifecycleManagementService.Result confirmReset(UUID owner, String token);
+    void cancelReset(UUID owner);
+    Optional<String> requestDeleteConfirmation(UUID owner);
+    RealmLifecycleManagementService.Result confirmDelete(UUID owner, String token);
+    void cancelDelete(UUID owner);
 }

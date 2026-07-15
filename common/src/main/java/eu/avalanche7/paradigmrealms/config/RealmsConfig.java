@@ -16,33 +16,44 @@ import eu.avalanche7.paradigmrealms.wilds.WildsConfig;
 import eu.avalanche7.paradigmrealms.wilds.WildsEntryMode;
 import eu.avalanche7.paradigmrealms.wilds.WildsProfileId;
 import eu.avalanche7.paradigmrealms.wilds.WildsRtpConfig;
+import eu.avalanche7.paradigmrealms.domain.realm.RealmSetting;
+import eu.avalanche7.paradigmrealms.ownership.PreviousOwnerRole;
 
 public record RealmsConfig(
         int membershipInviteExpiryMinutes,
         int maximumMembersPerRealm,
         int maximumPendingInvitesPerRealm,
+        int ownershipTransferExpiryMinutes,
+        PreviousOwnerRole previousOwnerRoleAfterTransfer,
+        int auditRetentionDays,
         int presenceValidationIntervalTicks,
         long denialMessageCooldownMillis,
         PresetSelectionConfig presetSelection,
         boolean allowExternalPresets,
         ImportPolicy schematicImportPolicy,
+        RealmSettingsPolicy realmSettings,
         WildsConfig wilds) {
 
-    public static final RealmsConfig DEFAULTS = new RealmsConfig(1440, 16, 16, 5, 1500,
+    public static final RealmsConfig DEFAULTS = new RealmsConfig(1440, 16, 16, 15, PreviousOwnerRole.MANAGER, 30, 5, 1500,
             new PresetSelectionConfig(BuiltinPresetDefinitions.STARTER_ISLAND_ID, false,
                     Set.of(BuiltinPresetDefinitions.STARTER_ISLAND_ID)), true, ImportPolicy.SANITIZE,
+            RealmSettingsPolicy.secureDefaults(),
             defaultWilds());
 
     public RealmsConfig {
         range(membershipInviteExpiryMinutes, 1, 43_200, "membershipInviteExpiryMinutes");
         range(maximumMembersPerRealm, 1, 1_000, "maximumMembersPerRealm");
         range(maximumPendingInvitesPerRealm, 1, 1_000, "maximumPendingInvitesPerRealm");
+        range(ownershipTransferExpiryMinutes, 1, 1_440, "ownershipTransferExpiryMinutes");
+        java.util.Objects.requireNonNull(previousOwnerRoleAfterTransfer, "previousOwnerRoleAfterTransfer");
+        range(auditRetentionDays, 1, 3650, "auditRetentionDays");
         range(presenceValidationIntervalTicks, 1, 200, "presenceValidationIntervalTicks");
         if (denialMessageCooldownMillis < 250 || denialMessageCooldownMillis > 60_000) {
             throw new IllegalArgumentException("denialMessageCooldownMillis must be between 250 and 60000");
         }
         java.util.Objects.requireNonNull(presetSelection, "presetSelection");
         java.util.Objects.requireNonNull(schematicImportPolicy, "schematicImportPolicy");
+        java.util.Objects.requireNonNull(realmSettings, "realmSettings");
         java.util.Objects.requireNonNull(wilds, "wilds");
     }
 
@@ -52,6 +63,10 @@ public record RealmsConfig(
                 integer(values, "membershipInviteExpiryMinutes"),
                 integer(values, "maximumMembersPerRealm"),
                 integer(values, "maximumPendingInvitesPerRealm"),
+                integer(values, "ownershipTransferExpiryMinutes"),
+                PreviousOwnerRole.valueOf(required(values, "previousOwnerRoleAfterTransfer")
+                        .trim().toUpperCase(Locale.ROOT)),
+                integer(values, "auditRetentionDays"),
                 integer(values, "presenceValidationIntervalTicks"),
                 longValue(values, "denialMessageCooldownMillis"),
                 new PresetSelectionConfig(
@@ -60,6 +75,7 @@ public record RealmsConfig(
                         parsePresetIds(required(values, "allowedPresets"))),
                 bool(values, "allowExternalPresets"),
                 ImportPolicy.valueOf(required(values, "schematicImportPolicy").trim().toUpperCase(Locale.ROOT)),
+                settingsPolicy(values),
                 new WildsConfig(
                         bool(values, "wilds.enabled"),
                         new WildsProfileId(required(values, "wilds.generationProfile")),
@@ -93,6 +109,9 @@ public record RealmsConfig(
         values.setProperty("membershipInviteExpiryMinutes", Integer.toString(membershipInviteExpiryMinutes));
         values.setProperty("maximumMembersPerRealm", Integer.toString(maximumMembersPerRealm));
         values.setProperty("maximumPendingInvitesPerRealm", Integer.toString(maximumPendingInvitesPerRealm));
+        values.setProperty("ownershipTransferExpiryMinutes", Integer.toString(ownershipTransferExpiryMinutes));
+        values.setProperty("previousOwnerRoleAfterTransfer", previousOwnerRoleAfterTransfer.name());
+        values.setProperty("auditRetentionDays", Integer.toString(auditRetentionDays));
         values.setProperty("presenceValidationIntervalTicks", Integer.toString(presenceValidationIntervalTicks));
         values.setProperty("denialMessageCooldownMillis", Long.toString(denialMessageCooldownMillis));
         values.setProperty("defaultPreset", presetSelection.defaultPreset().value());
@@ -101,6 +120,14 @@ public record RealmsConfig(
                 .map(RealmPresetId::value).sorted().collect(Collectors.joining(",")));
         values.setProperty("allowExternalPresets", Boolean.toString(allowExternalPresets));
         values.setProperty("schematicImportPolicy", schematicImportPolicy.name());
+        for (RealmSetting setting : RealmSetting.values()) {
+            RealmSettingPolicy policy = realmSettings.settings().get(setting);
+            String prefix = "realmSettings." + setting.commandName() + ".";
+            values.setProperty(prefix + "default", Boolean.toString(policy.defaultValue()));
+            values.setProperty(prefix + "ownerMutable", Boolean.toString(policy.ownerMutable()));
+            values.setProperty(prefix + "managerMutable", Boolean.toString(policy.managerMutable()));
+            values.setProperty(prefix + "forced", policy.forcedValue().map(String::valueOf).orElse(""));
+        }
         values.setProperty("wilds.enabled", Boolean.toString(wilds.enabled()));
         values.setProperty("wilds.generationProfile", wilds.generationProfile().value());
         values.setProperty("wilds.rotateSeedOnReset", Boolean.toString(wilds.rotateSeedOnReset()));
@@ -134,6 +161,30 @@ public record RealmsConfig(
                 .filter(part -> !part.isEmpty())
                 .map(RealmPresetId::new)
                 .collect(Collectors.toUnmodifiableSet());
+    }
+
+    private static RealmSettingsPolicy settingsPolicy(Properties values) {
+        java.util.EnumMap<RealmSetting, RealmSettingPolicy> policies =
+                new java.util.EnumMap<>(RealmSetting.class);
+        for (RealmSetting setting : RealmSetting.values()) {
+            String prefix = "realmSettings." + setting.commandName() + ".";
+            String forced = required(values, prefix + "forced").trim();
+            java.util.Optional<Boolean> forcedValue = forced.isEmpty()
+                    ? java.util.Optional.empty() : java.util.Optional.of(parseBoolean(forced, prefix + "forced"));
+            policies.put(setting, new RealmSettingPolicy(
+                    bool(values, prefix + "default"),
+                    bool(values, prefix + "ownerMutable"),
+                    bool(values, prefix + "managerMutable"),
+                    forcedValue));
+        }
+        return new RealmSettingsPolicy(policies);
+    }
+
+    private static boolean parseBoolean(String value, String key) {
+        if (!"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value)) {
+            throw new IllegalArgumentException(key + " must be true, false, or blank");
+        }
+        return Boolean.parseBoolean(value);
     }
 
     private static int integer(Properties values, String key) {

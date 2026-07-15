@@ -32,20 +32,23 @@ public final class RealmMembershipService {
             String ownerName,
             UUID target,
             String targetName) {
-        Optional<Realm> found = repository.findByOwner(owner);
+        Optional<Realm> found = managedRealm(owner);
         if (found.isEmpty()) return result(MembershipStatus.NO_REALM);
         Realm realm = found.orElseThrow();
+        if (operationInProgress(realm)) return result(MembershipStatus.OPERATION_IN_PROGRESS, realm);
         if (realm.state() != RealmLifecycleState.ACTIVE) return result(MembershipStatus.REALM_NOT_ACTIVE, realm);
-        if (!realm.owner().uuid().equals(owner)) return result(MembershipStatus.NOT_OWNER, realm);
         if (owner.equals(target)) return result(MembershipStatus.OWNER_CANNOT_BE_TARGET, realm);
-        if (realm.members().contains(target)) return result(MembershipStatus.ALREADY_MEMBER, realm);
+        if (realm.bans().containsKey(target)) return result(MembershipStatus.BANNED, realm);
+        if (realm.members().contains(target) || realm.managers().contains(target)) {
+            return result(MembershipStatus.ALREADY_MEMBER, realm);
+        }
 
         long now = clock.millis();
         List<RealmInvitation> cleaned = withoutExpired(repository.listInvitations(), now);
         RealmInvitation existing = find(cleaned, realm, target).orElse(null);
         long expiry = Math.addExact(now, limits.invitationExpiry().toMillis());
         RealmInvitation replacement = new RealmInvitation(
-                realm.id(), owner, target, ownerName, targetName,
+                realm.id(), realm.owner().uuid(), target, ownerName, targetName,
                 new CreationTimestamp(now), new CreationTimestamp(expiry), SchemaVersion.V1);
         if (existing == null && countForRealm(cleaned, realm) >= limits.maximumPendingInvitations()) {
             return result(MembershipStatus.MAXIMUM_PENDING_INVITATIONS, realm);
@@ -71,6 +74,7 @@ public final class RealmMembershipService {
         Optional<Realm> found = repository.findByOwner(owner);
         if (found.isEmpty()) return result(MembershipStatus.INVITATION_NOT_FOUND);
         Realm realm = found.orElseThrow();
+        if (operationInProgress(realm)) return result(MembershipStatus.OPERATION_IN_PROGRESS, realm);
         List<RealmInvitation> invitations = new ArrayList<>(repository.listInvitations());
         RealmInvitation invitation = find(invitations, realm, invitedPlayer).orElse(null);
         if (invitation == null) return result(MembershipStatus.INVITATION_NOT_FOUND, realm);
@@ -80,6 +84,11 @@ public final class RealmMembershipService {
             return result(MembershipStatus.INVITATION_EXPIRED, realm);
         }
         if (realm.state() != RealmLifecycleState.ACTIVE) return result(MembershipStatus.REALM_NOT_ACTIVE, realm);
+        if (realm.bans().containsKey(invitedPlayer)) {
+            invitations.remove(invitation);
+            repository.saveRealmAndInvitations(realm, invitations);
+            return result(MembershipStatus.BANNED, realm);
+        }
         if (realm.members().contains(invitedPlayer)) {
             invitations.remove(invitation);
             repository.saveRealmAndInvitations(realm, invitations);
@@ -97,9 +106,10 @@ public final class RealmMembershipService {
     }
 
     public synchronized MembershipResult decline(UUID invitedPlayer, UUID owner) {
-        Optional<Realm> found = repository.findByOwner(owner);
+        Optional<Realm> found = managedRealm(owner);
         if (found.isEmpty()) return result(MembershipStatus.INVITATION_NOT_FOUND);
         Realm realm = found.orElseThrow();
+        if (operationInProgress(realm)) return result(MembershipStatus.OPERATION_IN_PROGRESS, realm);
         List<RealmInvitation> invitations = new ArrayList<>(repository.listInvitations());
         RealmInvitation invitation = find(invitations, realm, invitedPlayer).orElse(null);
         if (invitation == null) return result(MembershipStatus.INVITATION_NOT_FOUND, realm);
@@ -114,7 +124,11 @@ public final class RealmMembershipService {
         Optional<Realm> found = repository.findByOwner(owner);
         if (found.isEmpty()) return result(MembershipStatus.NO_REALM);
         Realm realm = found.orElseThrow();
+        if (operationInProgress(realm)) return result(MembershipStatus.OPERATION_IN_PROGRESS, realm);
         if (owner.equals(target)) return result(MembershipStatus.OWNER_CANNOT_BE_TARGET, realm);
+        if (realm.owner().uuid().equals(target) || realm.managers().contains(target)) {
+            return result(MembershipStatus.FORBIDDEN_TARGET, realm);
+        }
         List<RealmInvitation> invitations = new ArrayList<>(repository.listInvitations());
         invitations.removeIf(invitation -> samePair(invitation, realm, target));
         if (!realm.members().contains(target)) {
@@ -134,11 +148,16 @@ public final class RealmMembershipService {
         Optional<Realm> found = repository.findByOwner(owner);
         if (found.isEmpty()) return result(MembershipStatus.NO_REALM);
         Realm realm = found.orElseThrow();
+        if (operationInProgress(realm)) return result(MembershipStatus.OPERATION_IN_PROGRESS, realm);
         if (realm.owner().uuid().equals(member)) return result(MembershipStatus.OWNER_CANNOT_BE_TARGET, realm);
-        if (!realm.members().contains(member)) return result(MembershipStatus.NOT_MEMBER, realm);
+        if (!realm.members().contains(member) && !realm.managers().contains(member)) {
+            return result(MembershipStatus.NOT_MEMBER, realm);
+        }
         Set<UUID> members = new HashSet<>(realm.members());
         members.remove(member);
-        Realm updated = realm.withMembers(members);
+        Set<UUID> managers = new HashSet<>(realm.managers());
+        managers.remove(member);
+        Realm updated = realm.withRoles(members, managers);
         repository.saveRealmAndInvitations(updated, repository.listInvitations());
         return result(MembershipStatus.LEFT, updated);
     }
@@ -147,9 +166,10 @@ public final class RealmMembershipService {
         if (policy != RealmAccessPolicy.PRIVATE && policy != RealmAccessPolicy.PUBLIC_VISIT) {
             throw new IllegalArgumentException("realm access must be PRIVATE or PUBLIC_VISIT");
         }
-        Optional<Realm> found = repository.findByOwner(owner);
+        Optional<Realm> found = managedRealm(owner);
         if (found.isEmpty()) return result(MembershipStatus.NO_REALM);
         Realm realm = found.orElseThrow();
+        if (operationInProgress(realm)) return result(MembershipStatus.OPERATION_IN_PROGRESS, realm);
         if (realm.state() != RealmLifecycleState.ACTIVE) return result(MembershipStatus.REALM_NOT_ACTIVE, realm);
         if (realm.accessPolicy() == policy) return result(MembershipStatus.NO_CHANGE, realm);
         Realm updated = realm.withAccessPolicy(policy);
@@ -175,6 +195,18 @@ public final class RealmMembershipService {
     private static Optional<RealmInvitation> find(
             List<RealmInvitation> invitations, Realm realm, UUID target) {
         return invitations.stream().filter(invitation -> samePair(invitation, realm, target)).findFirst();
+    }
+
+    private Optional<Realm> managedRealm(UUID actor) {
+        return repository.list().stream()
+                .filter(realm -> realm.state() == RealmLifecycleState.ACTIVE)
+                .filter(realm -> realm.owner().uuid().equals(actor) || realm.managers().contains(actor))
+                .findFirst();
+    }
+
+    private static boolean operationInProgress(Realm realm) {
+        return realm.lifecycleOperation().filter(operation -> operation.stage()
+                != eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleOperationStage.FAILED).isPresent();
     }
 
     private static boolean samePair(RealmInvitation invitation, Realm realm, UUID target) {

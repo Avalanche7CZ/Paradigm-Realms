@@ -6,6 +6,13 @@ allprojects {
     }
 }
 
+allprojects {
+    tasks.withType(AbstractArchiveTask).configureEach {
+        preserveFileTimestamps = false
+        reproducibleFileOrder = true
+    }
+}
+
 tasks.register('clean') {
     group = 'build'
     description = 'Cleans every Paradigm Realms module.'

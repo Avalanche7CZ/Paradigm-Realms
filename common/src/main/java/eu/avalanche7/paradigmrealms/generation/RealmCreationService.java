@@ -20,6 +20,7 @@ import eu.avalanche7.paradigmrealms.domain.realm.RealmFailure;
 import eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState;
 import eu.avalanche7.paradigmrealms.domain.realm.RealmOperation;
 import eu.avalanche7.paradigmrealms.persistence.RealmRepository;
+import eu.avalanche7.paradigmrealms.domain.realm.RealmSettings;
 
 public final class RealmCreationService {
     private static final int MAX_FAILURE_DETAIL = 240;
@@ -31,6 +32,7 @@ public final class RealmCreationService {
     private final RealmGenerationPort generator;
     private final Clock clock;
     private final Supplier<UUID> operationIds;
+    private final RealmSettings initialSettings;
 
     public RealmCreationService(
             RealmRepository repository,
@@ -39,7 +41,8 @@ public final class RealmCreationService {
             RealmGenerationPort generator,
             Clock clock,
             Supplier<UUID> operationIds) {
-        this(repository, allocator, () -> presets, new PresetPlacementPlanner(), generator, clock, operationIds);
+        this(repository, allocator, () -> presets, new PresetPlacementPlanner(), generator, clock, operationIds,
+                RealmSettings.SECURE_DEFAULTS);
     }
 
     public RealmCreationService(
@@ -50,6 +53,19 @@ public final class RealmCreationService {
             RealmGenerationPort generator,
             Clock clock,
             Supplier<UUID> operationIds) {
+        this(repository, allocator, presets, placementPlanner, generator, clock, operationIds,
+                RealmSettings.SECURE_DEFAULTS);
+    }
+
+    public RealmCreationService(
+            RealmRepository repository,
+            RealmAllocator allocator,
+            Supplier<RealmPresetCatalog> presets,
+            PresetPlacementPlanner placementPlanner,
+            RealmGenerationPort generator,
+            Clock clock,
+            Supplier<UUID> operationIds,
+            RealmSettings initialSettings) {
         this.repository = repository;
         this.allocator = allocator;
         this.presets = presets;
@@ -57,10 +73,11 @@ public final class RealmCreationService {
         this.generator = generator;
         this.clock = clock;
         this.operationIds = operationIds;
+        this.initialSettings = java.util.Objects.requireNonNull(initialSettings, "initialSettings");
     }
 
     public Realm create(UUID ownerUuid, RealmPresetId presetId) {
-        if (repository.findByOwner(ownerUuid).isPresent()) {
+        if (hasReservedRealm(ownerUuid)) {
             throw new RealmAlreadyExistsException(ownerUuid);
         }
         RealmPresetDefinition preset = presets.get().resolve(presetId)
@@ -72,7 +89,7 @@ public final class RealmCreationService {
         if (!preset.enabled()) {
             throw new IllegalArgumentException("cannot create from disabled preset " + preset.id());
         }
-        if (repository.findByOwner(ownerUuid).isPresent()) {
+        if (hasReservedRealm(ownerUuid)) {
             throw new RealmAlreadyExistsException(ownerUuid);
         }
         CreationTimestamp now = now();
@@ -86,7 +103,7 @@ public final class RealmCreationService {
             return new Realm(id, new RealmOwner(ownerUuid), RealmLifecycleState.ALLOCATED,
                     DimensionId.REALMS, allocation, plan.spawn(), preset.id(), Set.of(), Set.of(),
                     RealmAccessPolicy.PRIVATE, now, SchemaVersion.CURRENT,
-                    Optional.of(operation), Optional.empty());
+                    Optional.of(operation), Optional.empty()).withSettings(initialSettings);
         });
         return generate(allocated, capturedPlan[0]);
     }
@@ -142,5 +159,10 @@ public final class RealmCreationService {
 
     private CreationTimestamp now() {
         return CreationTimestamp.from(clock.instant());
+    }
+
+    private boolean hasReservedRealm(UUID ownerUuid) {
+        return repository.list().stream().anyMatch(realm -> realm.owner().uuid().equals(ownerUuid)
+                && realm.state() != RealmLifecycleState.ARCHIVED && realm.state() != RealmLifecycleState.DELETED);
     }
 }

@@ -9,13 +9,24 @@ import eu.avalanche7.paradigmrealms.domain.DimensionId;
 import eu.avalanche7.paradigmrealms.domain.realm.Realm;
 import eu.avalanche7.paradigmrealms.domain.realm.RealmAccessPolicy;
 import eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState;
+import eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleOperationStage;
 import eu.avalanche7.paradigmrealms.region.BlockCoordinate;
 import eu.avalanche7.paradigmrealms.region.RealmRegionIndex;
 import eu.avalanche7.paradigmrealms.region.RealmRegionKind;
 import eu.avalanche7.paradigmrealms.region.RealmRegionMatch;
+import eu.avalanche7.paradigmrealms.config.RealmSettingsPolicy;
 
 public final class ProtectionPolicyService {
     private final RealmAccessService access = new RealmAccessService();
+    private final RealmSettingsPolicy settingsPolicy;
+
+    public ProtectionPolicyService() {
+        this(RealmSettingsPolicy.secureDefaults());
+    }
+
+    public ProtectionPolicyService(RealmSettingsPolicy settingsPolicy) {
+        this.settingsPolicy = java.util.Objects.requireNonNull(settingsPolicy, "settingsPolicy");
+    }
 
     public ProtectionDecision evaluate(RealmRegionIndex index, ProtectionRequest request) {
         if (!request.dimension().equals(DimensionId.REALMS)) {
@@ -34,10 +45,16 @@ public final class ProtectionPolicyService {
             return decision(false, ProtectionReason.REALM_NOT_ACTIVE, realm,
                     role(realm, request.effectiveActor()), match.kind(), false);
         }
+        if (realm.lifecycleOperation().map(operation -> operation.stage() == RealmLifecycleOperationStage.ENTRY_BLOCKED
+                || operation.stage() == RealmLifecycleOperationStage.OCCUPANTS_EVACUATED).orElse(false)) {
+            return decision(false, ProtectionReason.REALM_NOT_ACTIVE, realm,
+                    role(realm, request.effectiveActor()), match.kind(), false);
+        }
 
         AccessRole role = role(realm, request.effectiveActor());
         if (request.action() == ProtectionAction.REALM_ENTRY) {
-            if (role == AccessRole.OWNER || role == AccessRole.MEMBER || role == AccessRole.VISITOR) {
+            if (role == AccessRole.OWNER || role == AccessRole.MANAGER
+                    || role == AccessRole.MEMBER || role == AccessRole.VISITOR) {
                 return decision(true, ProtectionReason.ALLOWED, realm, role, match.kind(), false);
             }
             if (request.adminBypassActive()) {
@@ -48,7 +65,10 @@ public final class ProtectionPolicyService {
             return decision(false, reason, realm, role, match.kind(), false);
         }
 
-        if (role == AccessRole.OWNER || role == AccessRole.MEMBER) {
+        if (role == AccessRole.OWNER || role == AccessRole.MANAGER || role == AccessRole.MEMBER) {
+            return decision(true, ProtectionReason.ALLOWED, realm, role, match.kind(), false);
+        }
+        if (role == AccessRole.VISITOR && visitorSettingAllows(realm, request.action())) {
             return decision(true, ProtectionReason.ALLOWED, realm, role, match.kind(), false);
         }
         if (request.adminBypassActive()) {
@@ -57,6 +77,34 @@ public final class ProtectionPolicyService {
         ProtectionReason reason = role == AccessRole.VISITOR
                 ? ProtectionReason.VISITOR_READ_ONLY : ProtectionReason.NOT_A_MEMBER;
         return decision(false, reason, realm, role, match.kind(), false);
+    }
+
+    public boolean explosionsAllowed(RealmRegionIndex index, BlockCoordinate origin) {
+        RealmRegionMatch match = index.resolve(origin);
+        return match.kind() == RealmRegionKind.BUILDABLE_REALM_REGION
+                && match.realm().filter(realm -> realm.state() == RealmLifecycleState.ACTIVE)
+                        .map(realm -> settingsPolicy.effective(realm.settings()).explosions()).orElse(false);
+    }
+
+    public boolean pvpAllowed(RealmRegionIndex index, BlockCoordinate target) {
+        RealmRegionMatch match = index.resolve(target);
+        return match.kind() != RealmRegionKind.BUILDABLE_REALM_REGION
+                || match.realm().filter(realm -> realm.state() == RealmLifecycleState.ACTIVE)
+                        .map(realm -> settingsPolicy.effective(realm.settings()).pvp()).orElse(false);
+    }
+
+    public boolean mobGriefingAllowed(RealmRegionIndex index, BlockCoordinate target) {
+        RealmRegionMatch match = index.resolve(target);
+        return match.kind() != RealmRegionKind.BUILDABLE_REALM_REGION
+                || match.realm().filter(realm -> realm.state() == RealmLifecycleState.ACTIVE)
+                        .map(realm -> settingsPolicy.effective(realm.settings()).mobGriefing()).orElse(false);
+    }
+
+    private boolean visitorSettingAllows(Realm realm, ProtectionAction action) {
+        var settings = settingsPolicy.effective(realm.settings());
+        if (action == ProtectionAction.CONTAINER_OPEN) return settings.visitorContainers();
+        return settings.visitorInteraction() && (action == ProtectionAction.BLOCK_USE
+                || action == ProtectionAction.ENTITY_INTERACT || action == ProtectionAction.VEHICLE_USE);
     }
 
     public boolean allowsEnvironmentalMutation(
