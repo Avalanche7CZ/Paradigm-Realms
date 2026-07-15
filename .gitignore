@@ -1,8 +1,23 @@
 # Compiled class file
 *.class
 
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Fabric development runs
+run/
+**/run/
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+
 # Log file
 *.log
+*.log.gz
 
 # BlueJ files
 *.ctxt
@@ -22,3 +37,6 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+/docs
+/Fabric-1.21.1/src/test
+/common/src/test
