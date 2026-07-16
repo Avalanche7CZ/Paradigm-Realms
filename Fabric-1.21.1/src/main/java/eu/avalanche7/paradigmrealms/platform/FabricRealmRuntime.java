@@ -726,6 +726,16 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
     }
 
     @Override
+    public List<Long> backupRealmIds() {
+        return repository.list().stream()
+                .filter(realm -> realm.state()
+                        == eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState.ACTIVE)
+                .map(realm -> realm.id().value())
+                .sorted()
+                .toList();
+    }
+
+    @Override
     public eu.avalanche7.paradigmrealms.backup.BackupStatusSnapshot backupStatus() {
         return backups == null
                 ? new eu.avalanche7.paradigmrealms.backup.BackupStatusSnapshot(

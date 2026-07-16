@@ -59,8 +59,9 @@ public final class RealmBackupCommandModule {
                         .requires(source -> allowed(
                                 source, permissions, RealmPermissionNodes.ADMIN_BACKUPS_CREATE))
                         .then(commands.literal("realm")
-                                .then(commands.argument("realmId", CommandArgument.longArgument(
-                                                1, RealmAllocator.MAX_REALM_ID))
+                                .then(commands.literal("all")
+                                        .executes(context -> createAll(context.source(), runtime)))
+                                .then(realmIdArgument(commands, runtime)
                                         .executes(context -> create(
                                                 context.source(),
                                                 runtime,
@@ -168,6 +169,18 @@ public final class RealmBackupCommandModule {
                 });
     }
 
+    private static CommandBuilder realmIdArgument(
+            CommandPlatform commands,
+            Supplier<? extends RealmBackupCommandRuntime> runtime) {
+        return commands.argument("realmId", CommandArgument.longArgument(1, RealmAllocator.MAX_REALM_ID))
+                .suggests((context, input) -> {
+                    RealmBackupCommandRuntime value = runtime.get();
+                    return value == null
+                            ? List.of()
+                            : value.backupRealmIds().stream().map(String::valueOf).toList();
+                });
+    }
+
     private static CommandBuilder deleteCommand(
             CommandPlatform commands,
             Supplier<? extends RealmBackupCommandRuntime> runtime,
@@ -225,6 +238,37 @@ public final class RealmBackupCommandModule {
         java.util.UUID actorId = actor == null ? new java.util.UUID(0, 0) : actor.uuid();
         String actorName = actor == null ? source.name() : actor.name();
         return reportRequest(source, runtime.requestAdminBackup(realmId, actorId, actorName));
+    }
+
+    private static int createAll(
+            CommandSource source,
+            Supplier<? extends RealmBackupCommandRuntime> supplier) {
+        RealmBackupCommandRuntime runtime = requireRuntime(source, supplier);
+        if (runtime == null) {
+            return 0;
+        }
+        List<Long> realmIds = runtime.backupRealmIds();
+        if (realmIds.isEmpty()) {
+            source.sendError("There are no active realms available for backup.");
+            return 0;
+        }
+
+        PlayerReference actor = source.player().orElse(null);
+        java.util.UUID actorId = actor == null ? new java.util.UUID(0, 0) : actor.uuid();
+        String actorName = actor == null ? source.name() : actor.name();
+        int queued = 0;
+        for (long realmId : realmIds) {
+            if (runtime.requestAdminBackup(realmId, actorId, actorName).accepted()) {
+                queued++;
+            }
+        }
+
+        int rejected = realmIds.size() - queued;
+        source.sendFeedback("Queued backups for " + queued + " of " + realmIds.size() + " active realms.");
+        if (rejected > 0) {
+            source.sendError(rejected + " realms were busy or the backup queue was full. Check backup status and retry.");
+        }
+        return queued > 0 ? 1 : 0;
     }
 
     private static int status(
