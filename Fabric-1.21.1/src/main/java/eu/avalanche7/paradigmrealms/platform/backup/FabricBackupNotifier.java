@@ -35,8 +35,9 @@ final class FabricBackupNotifier {
 
     void captureStarted(Realm realm) {
         forEachOccupant(realm, player -> {
-            sendChat(player, RealmMessageKey.BACKUP_CAPTURE_STARTED, java.util.Map.of());
-            player.sendMessage(Text.literal("Saving realm backup..."), true);
+            sendChat(player, RealmMessageKey.BACKUP_CAPTURE_STARTED, realmValues(realm));
+            player.sendMessage(Text.literal("Saving realm backup...")
+                    .formatted(net.minecraft.util.Formatting.AQUA), true);
         });
     }
 
@@ -58,7 +59,7 @@ final class FabricBackupNotifier {
             return;
         }
 
-        int chunks = entry.chunkCounts().values().stream()
+        int records = entry.chunkCounts().values().stream()
                 .mapToInt(Integer::intValue)
                 .sum();
         if (entry.reason() == BackupReason.AUTOMATIC) {
@@ -66,7 +67,9 @@ final class FabricBackupNotifier {
             return;
         }
         sendChat(owner, RealmMessageKey.BACKUP_COMPLETED, java.util.Map.of(
-                "chunks", Integer.toString(chunks),
+                "realm_name", realm.displayName(),
+                "realm_id", Long.toString(realm.id().value()),
+                "records", Integer.toString(records),
                 "size", humanBytes(entry.sizeBytes()),
                 "duration", captureDuration.toMillis() + " ms"));
     }
@@ -113,6 +116,12 @@ final class FabricBackupNotifier {
                 key.template(),
                 values,
                 key.fallback(values));
+    }
+
+    private static java.util.Map<String, String> realmValues(Realm realm) {
+        return java.util.Map.of(
+                "realm_name", realm.displayName(),
+                "realm_id", Long.toString(realm.id().value()));
     }
 
     private static String humanBytes(long bytes) {

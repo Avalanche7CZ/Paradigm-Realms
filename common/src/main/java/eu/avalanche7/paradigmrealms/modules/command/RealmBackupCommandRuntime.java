@@ -20,7 +20,9 @@ public interface RealmBackupCommandRuntime {
     BackupRequestResult requestOwnBackup(UUID player, String playerName);
     List<BackupCatalogEntry> ownBackups(UUID player);
     BackupRequestResult requestAdminBackup(long realmId, UUID actor, String actorName);
+    BackupRequestResult requestAdminBackupForOwner(UUID owner, UUID actor, String actorName);
     default List<Long> backupRealmIds() { return List.of(); }
+    default List<UUID> backupRealmOwners() { return List.of(); }
     BackupStatusSnapshot backupStatus();
     List<BackupCatalogEntry> backups();
     List<BackupCatalogEntry> backupsForRealm(long realmId);

@@ -726,12 +726,36 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
     }
 
     @Override
+    public eu.avalanche7.paradigmrealms.backup.BackupRequestResult requestAdminBackupForOwner(
+            UUID owner,
+            UUID actor,
+            String actorName) {
+        Realm realm = repository.findByOwner(owner).orElse(null);
+        if (realm == null) {
+            return eu.avalanche7.paradigmrealms.backup.BackupRequestResult.rejected(
+                    eu.avalanche7.paradigmrealms.backup.BackupFailure.REALM_NOT_FOUND,
+                    "That player does not own an active realm.");
+        }
+        return requestAdminBackup(realm.id().value(), actor, actorName);
+    }
+
+    @Override
     public List<Long> backupRealmIds() {
         return repository.list().stream()
                 .filter(realm -> realm.state()
                         == eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState.ACTIVE)
                 .map(realm -> realm.id().value())
                 .sorted()
+                .toList();
+    }
+
+    @Override
+    public List<UUID> backupRealmOwners() {
+        return repository.list().stream()
+                .filter(realm -> realm.state()
+                        == eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState.ACTIVE)
+                .sorted(java.util.Comparator.comparingLong(realm -> realm.id().value()))
+                .map(realm -> realm.owner().uuid())
                 .toList();
     }
 

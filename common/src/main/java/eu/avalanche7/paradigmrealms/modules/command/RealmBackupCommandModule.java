@@ -19,6 +19,9 @@ import eu.avalanche7.paradigmrealms.platform.command.CommandBuilder;
 import eu.avalanche7.paradigmrealms.platform.command.CommandPermissionGate;
 import eu.avalanche7.paradigmrealms.platform.command.CommandPlatform;
 import eu.avalanche7.paradigmrealms.platform.command.CommandSource;
+import eu.avalanche7.paradigmrealms.platform.player.PlayerDirectory;
+import eu.avalanche7.paradigmrealms.platform.player.PlayerIdentity;
+import eu.avalanche7.paradigmrealms.platform.player.PlayerIdentityResolution;
 
 public final class RealmBackupCommandModule {
     private RealmBackupCommandModule() {}
@@ -49,6 +52,7 @@ public final class RealmBackupCommandModule {
             Supplier<? extends RealmBackupCommandRuntime> runtime) {
         CommandPlatform commands = platform.commands();
         CommandPermissionGate permissions = platform.permissions();
+        PlayerDirectory players = platform.players();
 
         CommandBuilder backups = commands.literal("backups")
                 .then(commands.literal("status")
@@ -65,7 +69,14 @@ public final class RealmBackupCommandModule {
                                         .executes(context -> create(
                                                 context.source(),
                                                 runtime,
-                                                context.longValue("realmId"))))))
+                                                context.longValue("realmId")))))
+                        .then(commands.literal("player")
+                                .then(commands.argument("owner", CommandArgument.word())
+                                        .suggests((context, input) -> ownerSuggestions(
+                                                context.source(), runtime, players))
+                                        .executes(context -> createForOwner(
+                                                context.source(), runtime, players,
+                                                context.string("owner"))))))
                 .then(listCommand(commands, runtime, permissions))
                 .then(commands.literal("info")
                         .requires(source -> allowed(
@@ -237,7 +248,55 @@ public final class RealmBackupCommandModule {
         PlayerReference actor = source.player().orElse(null);
         java.util.UUID actorId = actor == null ? new java.util.UUID(0, 0) : actor.uuid();
         String actorName = actor == null ? source.name() : actor.name();
-        return reportRequest(source, runtime.requestAdminBackup(realmId, actorId, actorName));
+        return reportAdminRequest(
+                source,
+                runtime.requestAdminBackup(realmId, actorId, actorName),
+                "realm #" + realmId);
+    }
+
+    private static int createForOwner(
+            CommandSource source,
+            Supplier<? extends RealmBackupCommandRuntime> supplier,
+            PlayerDirectory players,
+            String ownerName) {
+        RealmBackupCommandRuntime runtime = requireRuntime(source, supplier);
+        if (runtime == null) {
+            return 0;
+        }
+        PlayerIdentityResolution resolution = players.resolveCached(source, ownerName);
+        if (resolution.status() == PlayerIdentityResolution.Status.AMBIGUOUS) {
+            source.sendError("That cached player name is ambiguous; use the realm ID instead.");
+            return 0;
+        }
+        if (resolution.status() == PlayerIdentityResolution.Status.UNKNOWN) {
+            source.sendError("No cached realm owner has that name.");
+            return 0;
+        }
+
+        PlayerIdentity owner = resolution.identity().orElseThrow();
+        PlayerReference actor = source.player().orElse(null);
+        java.util.UUID actorId = actor == null ? new java.util.UUID(0, 0) : actor.uuid();
+        String actorName = actor == null ? source.name() : actor.name();
+        return reportAdminRequest(
+                source,
+                runtime.requestAdminBackupForOwner(owner.uuid(), actorId, actorName),
+                owner.name() + "'s realm");
+    }
+
+    private static List<String> ownerSuggestions(
+            CommandSource source,
+            Supplier<? extends RealmBackupCommandRuntime> supplier,
+            PlayerDirectory players) {
+        RealmBackupCommandRuntime runtime = supplier.get();
+        if (runtime == null) {
+            return List.of();
+        }
+        return runtime.backupRealmOwners().stream()
+                .map(owner -> players.cached(source, owner))
+                .flatMap(Optional::stream)
+                .map(PlayerIdentity::name)
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
     }
 
     private static int createAll(
@@ -541,6 +600,18 @@ public final class RealmBackupCommandModule {
         }
         source.sendFeedback(result.message());
         source.sendFeedback("Queue position: " + result.queuePosition());
+        return 1;
+    }
+
+    private static int reportAdminRequest(
+            CommandSource source,
+            BackupRequestResult result,
+            String target) {
+        if (!result.accepted()) {
+            source.sendError(result.message());
+            return 0;
+        }
+        source.sendFeedback("Backup of " + target + " queued. Position: " + result.queuePosition() + '.');
         return 1;
     }
 
