@@ -390,6 +390,27 @@ Administrators can begin with:
 
 ---
 
-## License
+## 💬 Support & Community
 
-Paradigm Realms is licensed under **CC BY-NC-ND 4.0**.
+Need help, found a bug, or have a cute little feature idea?
+
+Come say hi ♡
+
+[![Discord](https://img.shields.io/badge/Join%20our%20Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/bbqPQTzK7b)
+
+---
+
+## ❤️ Support Development
+
+Enjoying Paradigm and want to support its development?
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/L3L4Z8L38)
+
+Every bit of support helps me spend more time making Paradigm better and adding more silly server things. ♡
+
+---
+
+# Credits
+
+**Paradigm Realms** is developed by **Avalanche7CZ**.
+```
