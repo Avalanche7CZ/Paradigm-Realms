@@ -1,6 +1,6 @@
 # Paradigm Realms
 
-> **A permanent little home for every player — and a Wilds world that can begin again.**
+> **A permanent little home for every player, and a Wilds world that can begin again.**
 
 Paradigm Realms is a fully server-side mod that gives players their own protected personal realms, created from configurable presets inside one shared void dimension.
 
