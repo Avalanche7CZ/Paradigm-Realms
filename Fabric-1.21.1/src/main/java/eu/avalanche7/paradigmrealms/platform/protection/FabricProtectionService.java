@@ -24,6 +24,10 @@ import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import eu.avalanche7.paradigmrealms.platform.wilds.FabricWildsService;
+import eu.avalanche7.paradigmrealms.platform.backup.RealmBackupMutationLocks;
+import eu.avalanche7.paradigmrealms.access.AccessRole;
+import eu.avalanche7.paradigmrealms.domain.RealmId;
+import eu.avalanche7.paradigmrealms.region.RealmRegionKind;
 
 public final class FabricProtectionService {
     private final AtomicReference<RealmRegionIndex> index = new AtomicReference<>(RealmRegionIndex.empty());
@@ -33,6 +37,7 @@ public final class FabricProtectionService {
     private final Map<UUID, Long> lastDenial = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastBypassLog = new ConcurrentHashMap<>();
     private volatile FabricWildsService wilds;
+    private volatile RealmBackupMutationLocks backupLocks;
 
     public FabricProtectionService(
             RealmSessionBypass bypass,
@@ -59,6 +64,10 @@ public final class FabricProtectionService {
         this.wilds = java.util.Objects.requireNonNull(service, "service");
     }
 
+    public void installBackupLocks(RealmBackupMutationLocks locks) {
+        this.backupLocks = java.util.Objects.requireNonNull(locks, "locks");
+    }
+
     public ProtectionDecision evaluate(
             ServerPlayerEntity player, World world, BlockPos target, ProtectionAction action) {
         return evaluate(Optional.of(player.getUuid()), Optional.empty(), world, target, action,
@@ -72,6 +81,19 @@ public final class FabricProtectionService {
             BlockPos target,
             ProtectionAction action,
             boolean bypassActive) {
+        RealmBackupMutationLocks locks = backupLocks;
+        if (action == ProtectionAction.REALM_ENTRY && locks != null) {
+            Optional<Long> blockedRealm = locks.entryBlockedRealm(world, target);
+            if (blockedRealm.isPresent()) {
+                return new ProtectionDecision(
+                        false,
+                        eu.avalanche7.paradigmrealms.protection.ProtectionReason.REALM_NOT_ACTIVE,
+                        Optional.of(new RealmId(blockedRealm.orElseThrow())),
+                        AccessRole.UNAUTHORIZED,
+                        RealmRegionKind.BUILDABLE_REALM_REGION,
+                        false);
+            }
+        }
         ProtectionDecision decision = policy.evaluate(index.get(), new ProtectionRequest(
                 actor,
                 DimensionId.parse(world.getRegistryKey().getValue().toString()),
@@ -87,6 +109,10 @@ public final class FabricProtectionService {
 
     public boolean allowOrNotify(
             ServerPlayerEntity player, World world, BlockPos target, ProtectionAction action) {
+        RealmBackupMutationLocks locks = backupLocks;
+        if (locks != null && !locks.allowOrNotify(player, world, target)) {
+            return false;
+        }
         FabricWildsService wildsService = wilds;
         if (wildsService != null && !wildsService.mutationAllowed(player, world, target)) {
             notifyWildsDenied(player);
@@ -111,12 +137,21 @@ public final class FabricProtectionService {
         return policy.allowsEnvironmentalMutation(index.get(), coordinate(source), coordinate(target));
     }
 
+    public boolean backupMutationAllowed(World world, BlockPos target) {
+        RealmBackupMutationLocks locks = backupLocks;
+        return locks == null || !locks.denies(world, target);
+    }
+
     public boolean allowsExplosion(BlockPos origin, BlockPos target) {
         return policy.explosionsAllowed(index.get(), coordinate(origin))
                 && policy.allowsEnvironmentalMutation(index.get(), coordinate(origin), coordinate(target));
     }
 
     public boolean allowDamage(Entity target, DamageSource source) {
+        RealmBackupMutationLocks locks = backupLocks;
+        if (locks != null && locks.denies(target.getWorld(), target.getBlockPos())) {
+            return false;
+        }
         Optional<UUID> responsible = responsiblePlayer(source);
         if (responsible.isEmpty()) {
             return true;
@@ -143,12 +178,18 @@ public final class FabricProtectionService {
     }
 
     public boolean environmentalMutationAllowed(World world, BlockPos target) {
+        RealmBackupMutationLocks locks = backupLocks;
+        if (locks != null && locks.denies(world, target)) {
+            return false;
+        }
         FabricWildsService wildsService = wilds;
         return wildsService == null || wildsService.environmentalMutationAllowed(world, target);
     }
 
     public boolean mobGriefingAllowed(World world, BlockPos target) {
         if (!world.getRegistryKey().getValue().toString().equals(DimensionId.REALMS.toString())) return true;
+        RealmBackupMutationLocks locks = backupLocks;
+        if (locks != null && locks.denies(world, target)) return false;
         return policy.mobGriefingAllowed(index.get(), coordinate(target));
     }
 
@@ -168,7 +209,9 @@ public final class FabricProtectionService {
         long now = System.currentTimeMillis();
         Long previous = lastDenial.put(player.getUuid(), now);
         if (previous == null || now - previous >= denialCooldownMillis) {
-            player.sendMessage(Text.literal("That action is protected: " + decision.reason()), true);
+            player.sendMessage(Text.literal(
+                    eu.avalanche7.paradigmrealms.message.PlayerMessageMappings
+                            .protectionDenial(decision.reason())), true);
         }
     }
 

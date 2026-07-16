@@ -61,6 +61,8 @@ import eu.avalanche7.paradigmrealms.platform.permission.FabricPermissionGate;
 import eu.avalanche7.paradigmrealms.platform.message.CommandMessenger;
 import eu.avalanche7.paradigmrealms.platform.wilds.FabricWildsService;
 import eu.avalanche7.paradigmrealms.platform.wilds.WildsActionResult;
+import eu.avalanche7.paradigmrealms.platform.backup.FabricRealmBackupService;
+import eu.avalanche7.paradigmrealms.platform.backup.RealmBackupMutationLocks;
 
 public final class FabricRealmRuntime implements RealmsCommandRuntime {
     private final MinecraftServer server;
@@ -74,6 +76,8 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
     private final FabricPresetCatalogManager presets;
     private final FabricWildsService wilds;
     private final eu.avalanche7.paradigmrealms.operations.OperationalAuditSink audit;
+    private final RealmBackupMutationLocks backupLocks;
+    private final FabricRealmBackupService backups;
     private boolean lifecycleRecoveryPending;
 
     private FabricRealmRuntime(
@@ -91,10 +95,12 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
         this.presets = presets;
         this.audit = createAudit(server, config.auditRetentionDays());
         this.bypass = new RealmSessionBypass();
+        this.backupLocks = new RealmBackupMutationLocks(config.denialMessageCooldownMillis());
         this.protection = new FabricProtectionService(
                 bypass,
                 config.denialMessageCooldownMillis(),
                 config.realmSettings());
+        this.protection.installBackupLocks(backupLocks);
         AtomicReference<RealmPresenceService> lifecyclePresence = new AtomicReference<>();
         this.common = new RealmsRuntime(
                 repository, allocator, presets::catalog, () -> presets.snapshot().selection(),
@@ -125,6 +131,8 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
         FabricProtectionHooks.install(protection);
         this.wilds = new FabricWildsService(server, this, config.wilds(), permissions, messages);
         this.protection.installWilds(wilds);
+        this.backups = createBackups(
+                server, repository, config, backupLocks, audit, presence, messages);
     }
 
     public static FabricRealmRuntime start(
@@ -202,6 +210,9 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
         return common.requestResetConfirmation(owner, preset);
     }
     @Override public eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Result confirmReset(UUID owner, String token) {
+        if (backups != null && config.realmBackups().preOperation().beforeReset()) {
+            return confirmResetAfterBackup(owner, token);
+        }
         var result = lifecycleResult(common.confirmReset(owner, token));
         audit("REALM_RESET", result.status().name(), owner, result.source().map(Realm::id), true);
         if (result.status()
@@ -215,11 +226,128 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
         return common.requestDeleteConfirmation(owner);
     }
     @Override public eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Result confirmDelete(UUID owner, String token) {
+        if (backups != null && config.realmBackups().preOperation().beforeDelete()) {
+            return confirmDeleteAfterBackup(owner, token);
+        }
         var result = lifecycleResult(common.confirmDelete(owner, token));
         audit("REALM_DELETE_ARCHIVE", result.status().name(), owner, result.source().map(Realm::id), true);
         return result;
     }
     @Override public void cancelDelete(UUID owner) { common.cancelDelete(owner); }
+
+    private eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Result
+            confirmResetAfterBackup(UUID owner, String token) {
+        var confirmation = common.consumeResetConfirmation(owner, token);
+        if (!confirmation.valid()) {
+            return confirmation.invalidResult();
+        }
+
+        Realm realm = confirmation.realm().orElseThrow();
+        RealmPresetId preset = confirmation.preset().orElseThrow();
+        var request = backups.requestRequiredBackup(
+                realm,
+                eu.avalanche7.paradigmrealms.backup.BackupReason.PRE_RESET,
+                playerActor(owner),
+                successful -> {
+                    if (!successful && config.realmBackups().preOperation().requireSuccessfulBackupForReset()) {
+                        notifyPreOperationFailure(owner, "Your realm was not recreated because its safety backup failed.");
+                        return;
+                    }
+                    var result = lifecycleResult(common.executeReset(owner, preset));
+                    audit("REALM_RESET", result.status().name(), owner, result.source().map(Realm::id), true);
+                    if (result.status()
+                            == eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.RESET_COMPLETED) {
+                        result.replacement().ifPresent(replacement ->
+                                common.teleports().teleportToRealm(owner, replacement));
+                        notifyPlayer(owner, "Realm reset completed. Your previous realm is archived.");
+                    } else {
+                        notifyPlayer(owner, "Your realm could not be recreated. Your original realm is still active.");
+                    }
+                });
+        if (!request.accepted()
+                && !config.realmBackups().preOperation().requireSuccessfulBackupForReset()) {
+            return lifecycleResult(common.executeReset(owner, preset));
+        }
+        return queuedPreOperationResult(realm, request.accepted(),
+                config.realmBackups().preOperation().requireSuccessfulBackupForReset());
+    }
+
+    private eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Result
+            confirmDeleteAfterBackup(UUID owner, String token) {
+        var confirmation = common.consumeDeleteConfirmation(owner, token);
+        if (!confirmation.valid()) {
+            return confirmation.invalidResult();
+        }
+
+        Realm realm = confirmation.realm().orElseThrow();
+        var request = backups.requestRequiredBackup(
+                realm,
+                eu.avalanche7.paradigmrealms.backup.BackupReason.PRE_DELETE,
+                playerActor(owner),
+                successful -> {
+                    if (!successful && config.realmBackups().preOperation().requireSuccessfulBackupForDelete()) {
+                        notifyPreOperationFailure(owner, "Your realm was not archived because its safety backup failed.");
+                        return;
+                    }
+                    var result = lifecycleResult(common.executeDelete(owner));
+                    audit("REALM_DELETE_ARCHIVE", result.status().name(), owner,
+                            result.source().map(Realm::id), true);
+                    if (result.status()
+                            == eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.ARCHIVED) {
+                        notifyPlayer(owner, "Realm archived. Its blocks and allocation remain protected.");
+                    } else {
+                        notifyPlayer(owner, "Your realm could not be archived. It remains active.");
+                    }
+                });
+        if (!request.accepted()
+                && !config.realmBackups().preOperation().requireSuccessfulBackupForDelete()) {
+            return lifecycleResult(common.executeDelete(owner));
+        }
+        return queuedPreOperationResult(realm, request.accepted(),
+                config.realmBackups().preOperation().requireSuccessfulBackupForDelete());
+    }
+
+    private eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Result
+            queuedPreOperationResult(Realm realm, boolean queued, boolean required) {
+        var status = queued
+                ? eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.PRE_OPERATION_BACKUP_QUEUED
+                : eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.PRE_OPERATION_BACKUP_FAILED;
+        return new eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Result(
+                status,
+                Optional.of(realm),
+                Optional.empty());
+    }
+
+    private eu.avalanche7.paradigmrealms.backup.BackupActor playerActor(UUID player) {
+        return new eu.avalanche7.paradigmrealms.backup.BackupActor(
+                eu.avalanche7.paradigmrealms.backup.BackupActor.Type.PLAYER,
+                Optional.of(player),
+                playerName(player));
+    }
+
+    private String playerName(UUID player) {
+        ServerPlayerEntity online = online(player);
+        if (online != null) {
+            return online.getGameProfile().getName();
+        }
+        return server.getUserCache().getByUuid(player)
+                .map(profile -> profile.getName())
+                .orElse("UnknownPlayer");
+    }
+
+    private void notifyPreOperationFailure(UUID player, String message) {
+        notifyPlayer(player, message);
+        eu.avalanche7.paradigmrealms.ParadigmRealms.LOGGER.warn(
+                "Required pre-operation realm backup failed for {}",
+                player);
+    }
+
+    private void notifyPlayer(UUID player, String message) {
+        ServerPlayerEntity online = online(player);
+        if (online != null) {
+            online.sendMessage(net.minecraft.text.Text.literal(message), false);
+        }
+    }
 
     public FabricPresetCatalogManager.Snapshot presetSnapshot() { return presets.snapshot(); }
 
@@ -538,6 +666,233 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
 
     public FabricWildsService wilds() { return wilds; }
 
+    public Optional<FabricRealmBackupService> backupService() {
+        return Optional.ofNullable(backups);
+    }
+
+    public void tickBackups() {
+        if (backups != null) backups.tick();
+    }
+
+    @Override
+    public eu.avalanche7.paradigmrealms.backup.BackupRequestResult requestOwnBackup(
+            UUID player,
+            String playerName) {
+        if (backups == null) {
+            return backupUnavailable();
+        }
+        Realm realm = repository.findByOwner(player).orElse(null);
+        if (realm == null) {
+            return eu.avalanche7.paradigmrealms.backup.BackupRequestResult.rejected(
+                    eu.avalanche7.paradigmrealms.backup.BackupFailure.REALM_NOT_FOUND,
+                    "You do not have an active realm to back up.");
+        }
+        return backups.request(
+                realm,
+                eu.avalanche7.paradigmrealms.backup.BackupReason.PLAYER_REQUESTED,
+                new eu.avalanche7.paradigmrealms.backup.BackupActor(
+                        eu.avalanche7.paradigmrealms.backup.BackupActor.Type.PLAYER,
+                        Optional.of(player),
+                        playerName));
+    }
+
+    @Override
+    public List<eu.avalanche7.paradigmrealms.backup.BackupCatalogEntry> ownBackups(UUID player) {
+        return backups == null ? List.of() : backups.listForOwner(player);
+    }
+
+    @Override
+    public eu.avalanche7.paradigmrealms.backup.BackupRequestResult requestAdminBackup(
+            long realmId,
+            UUID actor,
+            String actorName) {
+        if (backups == null) {
+            return backupUnavailable();
+        }
+        Realm realm = repository.findById(
+                new eu.avalanche7.paradigmrealms.domain.RealmId(realmId)).orElse(null);
+        if (realm == null) {
+            return eu.avalanche7.paradigmrealms.backup.BackupRequestResult.rejected(
+                    eu.avalanche7.paradigmrealms.backup.BackupFailure.REALM_NOT_FOUND,
+                    "No realm exists with that ID.");
+        }
+        return backups.request(
+                realm,
+                eu.avalanche7.paradigmrealms.backup.BackupReason.MANUAL,
+                new eu.avalanche7.paradigmrealms.backup.BackupActor(
+                        eu.avalanche7.paradigmrealms.backup.BackupActor.Type.ADMIN,
+                        Optional.of(actor),
+                        actorName));
+    }
+
+    @Override
+    public eu.avalanche7.paradigmrealms.backup.BackupStatusSnapshot backupStatus() {
+        return backups == null
+                ? new eu.avalanche7.paradigmrealms.backup.BackupStatusSnapshot(
+                        0, Optional.empty(), Optional.empty(), 0, 0)
+                : backups.status();
+    }
+
+    @Override
+    public List<eu.avalanche7.paradigmrealms.backup.BackupCatalogEntry> backups() {
+        return backups == null ? List.of() : backups.list();
+    }
+
+    @Override
+    public List<eu.avalanche7.paradigmrealms.backup.BackupCatalogEntry> backupsForRealm(long realmId) {
+        return backups == null ? List.of() : backups.listForRealm(realmId);
+    }
+
+    @Override
+    public Optional<eu.avalanche7.paradigmrealms.backup.BackupCatalogEntry> backup(
+            eu.avalanche7.paradigmrealms.backup.BackupId backupId) {
+        return backups == null ? Optional.empty() : backups.find(backupId);
+    }
+
+    @Override
+    public CompletionStage<eu.avalanche7.paradigmrealms.backup.BackupVerificationResult> verifyBackup(
+            eu.avalanche7.paradigmrealms.backup.BackupId backupId) {
+        if (backups == null) {
+            return CompletableFuture.completedFuture(
+                    eu.avalanche7.paradigmrealms.backup.BackupVerificationResult.invalid(
+                            List.of("realm backup service is unavailable"),
+                            0));
+        }
+        return backups.verify(backupId);
+    }
+
+    @Override
+    public boolean setBackupPinned(
+            eu.avalanche7.paradigmrealms.backup.BackupId backupId,
+            boolean pinned,
+            UUID actor,
+            String actorName) {
+        if (backups == null) {
+            return false;
+        }
+        try {
+            return backups.pin(backupId, pinned, actor, actorName);
+        } catch (java.io.IOException exception) {
+            eu.avalanche7.paradigmrealms.ParadigmRealms.LOGGER.error(
+                    "Backup catalog pin update failed: {}",
+                    exception.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public eu.avalanche7.paradigmrealms.backup.BackupDeletionResult requestBackupDeletion(
+            eu.avalanche7.paradigmrealms.backup.BackupId backupId,
+            UUID actor) {
+        if (backups == null) {
+            return eu.avalanche7.paradigmrealms.backup.BackupDeletionResult.failed(
+                    "Realm backups are unavailable. Check the server log.");
+        }
+        return backups.requestDeletion(backupId, actor);
+    }
+
+    @Override
+    public eu.avalanche7.paradigmrealms.backup.BackupDeletionResult confirmBackupDeletion(
+            String token,
+            UUID actor) {
+        if (backups == null) {
+            return eu.avalanche7.paradigmrealms.backup.BackupDeletionResult.failed(
+                    "Realm backups are unavailable. Check the server log.");
+        }
+        return backups.confirmDeletion(token, actor);
+    }
+
+    @Override
+    public int runDueBackups() {
+        return backups == null ? 0 : backups.runDueNow();
+    }
+
+    @Override
+    public CompletionStage<eu.avalanche7.paradigmrealms.backup.RestorePreparationResult>
+            prepareBackupRestore(
+                    eu.avalanche7.paradigmrealms.backup.BackupId backupId,
+                    eu.avalanche7.paradigmrealms.backup.RestoreMode mode,
+                    UUID actor,
+                    String actorName) {
+        if (backups == null) {
+            return CompletableFuture.completedFuture(
+                    eu.avalanche7.paradigmrealms.backup.RestorePreparationResult.failed(
+                            eu.avalanche7.paradigmrealms.backup.RestorePreparationResult.Status.MANIFEST_WRITE_FAILED,
+                            "Realm backups are unavailable. Check the server log."));
+        }
+        return backups.prepareRestore(
+                backupId,
+                mode,
+                new eu.avalanche7.paradigmrealms.backup.BackupActor(
+                        eu.avalanche7.paradigmrealms.backup.BackupActor.Type.ADMIN,
+                        Optional.of(actor),
+                actorName));
+    }
+
+    @Override
+    public boolean cancelBackupRestore(
+            eu.avalanche7.paradigmrealms.backup.BackupId backupId) {
+        return backups != null && backups.cancelRestore(backupId);
+    }
+
+    @Override
+    public eu.avalanche7.paradigmrealms.backup.BackupPruneResult previewBackupPrune() {
+        if (backups == null) {
+            return emptyPruneResult(false);
+        }
+        try {
+            return backups.previewPrune();
+        } catch (java.io.IOException exception) {
+            eu.avalanche7.paradigmrealms.ParadigmRealms.LOGGER.error(
+                    "Backup prune preview failed: {}", exception.getMessage());
+            return emptyPruneResult(false);
+        }
+    }
+
+    @Override
+    public eu.avalanche7.paradigmrealms.backup.BackupPruneResult runBackupPrune(
+            UUID actor,
+            String actorName) {
+        if (backups == null) {
+            return emptyPruneResult(false);
+        }
+        try {
+            return backups.runPrune(actor, actorName);
+        } catch (java.io.IOException exception) {
+            eu.avalanche7.paradigmrealms.ParadigmRealms.LOGGER.error(
+                    "Backup prune failed: {}", exception.getMessage());
+            return emptyPruneResult(false);
+        }
+    }
+
+    @Override
+    public eu.avalanche7.paradigmrealms.backup.BackupCatalogRepairResult rebuildBackupCatalog(
+            UUID actor,
+            String actorName) {
+        if (backups == null) {
+            return new eu.avalanche7.paradigmrealms.backup.BackupCatalogRepairResult(
+                    false, 0, 0, List.of("realm backup service is unavailable"));
+        }
+        try {
+            return backups.rebuildCatalog(actor, actorName);
+        } catch (java.io.IOException exception) {
+            return new eu.avalanche7.paradigmrealms.backup.BackupCatalogRepairResult(
+                    false, 0, 0, List.of("catalog rebuild failed; see the server log"));
+        }
+    }
+
+    private static eu.avalanche7.paradigmrealms.backup.BackupPruneResult emptyPruneResult(
+            boolean applied) {
+        return new eu.avalanche7.paradigmrealms.backup.BackupPruneResult(
+                List.of(), 0, Map.of(), false, applied);
+    }
+
+    private static eu.avalanche7.paradigmrealms.backup.BackupRequestResult backupUnavailable() {
+        return eu.avalanche7.paradigmrealms.backup.BackupRequestResult.rejected(
+                eu.avalanche7.paradigmrealms.backup.BackupFailure.INTERNAL_ERROR,
+                "Realm backups are unavailable. Ask an administrator to check the server log.");
+    }
+
     @Override public eu.avalanche7.paradigmrealms.wilds.WildsState wildsState() { return wilds.state(); }
     @Override public Duration wildsCooldownRemaining(UUID player) { return wilds.cooldownRemaining(player); }
     @Override public WildsActionResult enterWilds(UUID player) {
@@ -654,6 +1009,7 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
     }
 
     public void shutdown() {
+        if (backups != null) backups.close();
         wilds.shutdown();
         bypass.clearAll();
         presence.clear();
@@ -689,6 +1045,32 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
             eu.avalanche7.paradigmrealms.ParadigmRealms.LOGGER.error(
                     "Operational audit log unavailable: {}", exception.getMessage());
             return eu.avalanche7.paradigmrealms.operations.OperationalAuditSink.disabled();
+        }
+    }
+
+    private static FabricRealmBackupService createBackups(
+            MinecraftServer server,
+            PersistentRealmRepository repository,
+            RealmsConfig config,
+            RealmBackupMutationLocks locks,
+            eu.avalanche7.paradigmrealms.operations.OperationalAuditSink audit,
+            RealmPresenceService presence,
+            CommandMessenger messages) {
+        try {
+            return new FabricRealmBackupService(
+                    server,
+                    repository,
+                    config.realmBackups(),
+                    locks,
+                    audit,
+                    presence,
+                    messages);
+        } catch (java.io.IOException | RuntimeException exception) {
+            eu.avalanche7.paradigmrealms.ParadigmRealms.LOGGER.error(
+                    "Realm backup service is unavailable: {}",
+                    exception.getMessage());
+            locks.clear();
+            return null;
         }
     }
 

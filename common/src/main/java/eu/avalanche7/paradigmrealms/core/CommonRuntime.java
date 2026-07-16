@@ -9,6 +9,7 @@ import eu.avalanche7.paradigmrealms.modules.command.RealmAdminCommandModule;
 import eu.avalanche7.paradigmrealms.modules.command.WildsCommandModule;
 import eu.avalanche7.paradigmrealms.modules.command.RealmsHelpCommandModule;
 import eu.avalanche7.paradigmrealms.modules.command.RealmOwnerCommandModule;
+import eu.avalanche7.paradigmrealms.modules.command.RealmBackupCommandModule;
 import eu.avalanche7.paradigmrealms.platform.RealmsPlatformAdapter;
 
 public final class CommonRuntime {
@@ -24,6 +25,7 @@ public final class CommonRuntime {
         RealmOwnerCommandModule.register(platform, runtime);
         WildsCommandModule.register(platform, runtime);
         RealmAdminCommandModule.register(platform, runtime);
+        RealmBackupCommandModule.register(platform, runtime);
         RealmsHelpCommandModule.register(platform);
     }
 }

@@ -86,6 +86,7 @@ public final class ParadigmRealms implements DedicatedServerModInitializer {
                 current.wilds().validateAllPresence();
             }
             if (current != null) current.wilds().tick();
+            if (current != null) current.tickBackups();
             if (current != null) current.tickLifecycle();
         });
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {

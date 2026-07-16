@@ -18,6 +18,8 @@ import eu.avalanche7.paradigmrealms.wilds.WildsProfileId;
 import eu.avalanche7.paradigmrealms.wilds.WildsRtpConfig;
 import eu.avalanche7.paradigmrealms.domain.realm.RealmSetting;
 import eu.avalanche7.paradigmrealms.ownership.PreviousOwnerRole;
+import eu.avalanche7.paradigmrealms.backup.BackupFilenamePolicy;
+import eu.avalanche7.paradigmrealms.backup.RealmBackupConfig;
 
 public record RealmsConfig(
         int membershipInviteExpiryMinutes,
@@ -32,13 +34,14 @@ public record RealmsConfig(
         boolean allowExternalPresets,
         ImportPolicy schematicImportPolicy,
         RealmSettingsPolicy realmSettings,
-        WildsConfig wilds) {
+        WildsConfig wilds,
+        RealmBackupConfig realmBackups) {
 
     public static final RealmsConfig DEFAULTS = new RealmsConfig(1440, 16, 16, 15, PreviousOwnerRole.MANAGER, 30, 5, 1500,
             new PresetSelectionConfig(BuiltinPresetDefinitions.STARTER_ISLAND_ID, false,
                     Set.of(BuiltinPresetDefinitions.STARTER_ISLAND_ID)), true, ImportPolicy.SANITIZE,
             RealmSettingsPolicy.secureDefaults(),
-            defaultWilds());
+            defaultWilds(), RealmBackupConfig.DEFAULTS);
 
     public RealmsConfig {
         range(membershipInviteExpiryMinutes, 1, 43_200, "membershipInviteExpiryMinutes");
@@ -55,6 +58,7 @@ public record RealmsConfig(
         java.util.Objects.requireNonNull(schematicImportPolicy, "schematicImportPolicy");
         java.util.Objects.requireNonNull(realmSettings, "realmSettings");
         java.util.Objects.requireNonNull(wilds, "wilds");
+        java.util.Objects.requireNonNull(realmBackups, "realmBackups");
     }
 
     public static RealmsConfig fromProperties(Properties values) {
@@ -97,7 +101,8 @@ public record RealmsConfig(
                         parseLongs(required(values, "wilds.schedule.warningTimesSeconds")),
                         bool(values, "wilds.reset.shutdownWhenPrepared"),
                         integer(values, "wilds.reset.backupRetentionCount"),
-                        bool(values, "wilds.reset.deleteOldBackupsAfterVerification")));
+                        bool(values, "wilds.reset.deleteOldBackupsAfterVerification")),
+                backupConfig(values));
     }
 
     public static Properties defaultProperties() {
@@ -151,7 +156,85 @@ public record RealmsConfig(
         values.setProperty("wilds.reset.backupRetentionCount", Integer.toString(wilds.backupRetentionCount()));
         values.setProperty("wilds.reset.deleteOldBackupsAfterVerification",
                 Boolean.toString(wilds.deleteOldBackupsAfterVerification()));
+        RealmBackupConfig backup = realmBackups;
+        values.setProperty("realmBackups.enabled", Boolean.toString(backup.enabled()));
+        values.setProperty("realmBackups.automatic.enabled", Boolean.toString(backup.automatic().enabled()));
+        values.setProperty("realmBackups.automatic.intervalHours", Long.toString(backup.automatic().interval().toHours()));
+        values.setProperty("realmBackups.automatic.initialDelayMinutes", Long.toString(backup.automatic().initialDelay().toMinutes()));
+        values.setProperty("realmBackups.automatic.maximumConcurrentBackups", Integer.toString(backup.automatic().maximumConcurrentBackups()));
+        values.setProperty("realmBackups.automatic.minimumMinutesBetweenBackupsPerRealm", Long.toString(backup.automatic().minimumBetweenPerRealm().toMinutes()));
+        values.setProperty("realmBackups.automatic.activeRealmsOnly", Boolean.toString(backup.automatic().activeRealmsOnly()));
+        values.setProperty("realmBackups.automatic.includeArchivedRealms", Boolean.toString(backup.automatic().includeArchivedRealms()));
+        values.setProperty("realmBackups.automatic.notifyOwners", Boolean.toString(backup.automatic().notifyOwners()));
+        values.setProperty("realmBackups.automatic.notifyAdministratorsOnFailure", Boolean.toString(backup.automatic().notifyAdministratorsOnFailure()));
+        values.setProperty("realmBackups.manual.allowPlayerSelfBackup", Boolean.toString(backup.manual().allowPlayerSelfBackup()));
+        values.setProperty("realmBackups.manual.playerCooldownMinutes", Long.toString(backup.manual().playerCooldown().toMinutes()));
+        values.setProperty("realmBackups.manual.maximumQueuedPlayerRequests", Integer.toString(backup.manual().maximumQueuedPlayerRequests()));
+        values.setProperty("realmBackups.compression.level", Integer.toString(backup.compression().level()));
+        values.setProperty("realmBackups.preOperation.beforeReset", Boolean.toString(backup.preOperation().beforeReset()));
+        values.setProperty("realmBackups.preOperation.beforeDelete", Boolean.toString(backup.preOperation().beforeDelete()));
+        values.setProperty("realmBackups.preOperation.beforeArchiveRestore", Boolean.toString(backup.preOperation().beforeArchiveRestore()));
+        values.setProperty("realmBackups.preOperation.beforeOwnershipTransfer", Boolean.toString(backup.preOperation().beforeOwnershipTransfer()));
+        values.setProperty("realmBackups.preOperation.requireSuccessfulBackupForReset", Boolean.toString(backup.preOperation().requireSuccessfulBackupForReset()));
+        values.setProperty("realmBackups.preOperation.requireSuccessfulBackupForDelete", Boolean.toString(backup.preOperation().requireSuccessfulBackupForDelete()));
+        values.setProperty("realmBackups.preOperation.requireSuccessfulBackupForRestore", Boolean.toString(backup.preOperation().requireSuccessfulBackupForRestore()));
+        values.setProperty("realmBackups.storage.minimumFreeSpaceGiB", Long.toString(backup.storage().minimumFreeSpaceGiB()));
+        values.setProperty("realmBackups.storage.maximumTotalSizeGiB", Long.toString(backup.storage().maximumTotalSizeGiB()));
+        values.setProperty("realmBackups.retention.keepLatestPerRealm", Integer.toString(backup.retention().keepLatestPerRealm()));
+        values.setProperty("realmBackups.retention.keepDailyDays", Integer.toString(backup.retention().keepDailyDays()));
+        values.setProperty("realmBackups.retention.keepWeeklyWeeks", Integer.toString(backup.retention().keepWeeklyWeeks()));
+        values.setProperty("realmBackups.retention.keepMonthlyMonths", Integer.toString(backup.retention().keepMonthlyMonths()));
+        values.setProperty("realmBackups.retention.maximumBackupsPerRealm", Integer.toString(backup.retention().maximumBackupsPerRealm()));
+        values.setProperty("realmBackups.retention.maximumAgeDays", Integer.toString(backup.retention().maximumAgeDays()));
+        values.setProperty("realmBackups.retention.pinnedBackupsNeverExpire", Boolean.toString(backup.retention().pinnedBackupsNeverExpire()));
+        values.setProperty("realmBackups.filenameTemplate", backup.filenameTemplate());
+        values.setProperty("realmBackups.filenameTimezone", backup.filenameZone().getId());
+        values.setProperty("realmBackups.maximumQueueLength", Integer.toString(backup.maximumQueueLength()));
+        values.setProperty("realmBackups.maximumPackagingJobs", Integer.toString(backup.maximumPackagingJobs()));
+        values.setProperty("realmBackups.captureTimeoutSeconds", Long.toString(backup.captureTimeout().toSeconds()));
+        values.setProperty("realmBackups.maximumRetries", Integer.toString(backup.maximumRetries()));
+        values.setProperty("realmBackups.schedulingSpreadMinutes", Long.toString(backup.schedulingSpread().toMinutes()));
         return values;
+    }
+
+    private static RealmBackupConfig backupConfig(Properties values) {
+        return new RealmBackupConfig(bool(values, "realmBackups.enabled"),
+                new RealmBackupConfig.Automatic(bool(values, "realmBackups.automatic.enabled"),
+                        Duration.ofHours(longValue(values, "realmBackups.automatic.intervalHours")),
+                        Duration.ofMinutes(longValue(values, "realmBackups.automatic.initialDelayMinutes")),
+                        integer(values, "realmBackups.automatic.maximumConcurrentBackups"),
+                        Duration.ofMinutes(longValue(values, "realmBackups.automatic.minimumMinutesBetweenBackupsPerRealm")),
+                        bool(values, "realmBackups.automatic.activeRealmsOnly"),
+                        bool(values, "realmBackups.automatic.includeArchivedRealms"),
+                        bool(values, "realmBackups.automatic.notifyOwners"),
+                        bool(values, "realmBackups.automatic.notifyAdministratorsOnFailure")),
+                new RealmBackupConfig.Manual(bool(values, "realmBackups.manual.allowPlayerSelfBackup"),
+                        Duration.ofMinutes(longValue(values, "realmBackups.manual.playerCooldownMinutes")),
+                        integer(values, "realmBackups.manual.maximumQueuedPlayerRequests")),
+                new RealmBackupConfig.Compression(integer(values, "realmBackups.compression.level")),
+                new RealmBackupConfig.PreOperation(bool(values, "realmBackups.preOperation.beforeReset"),
+                        bool(values, "realmBackups.preOperation.beforeDelete"),
+                        bool(values, "realmBackups.preOperation.beforeArchiveRestore"),
+                        bool(values, "realmBackups.preOperation.beforeOwnershipTransfer"),
+                        bool(values, "realmBackups.preOperation.requireSuccessfulBackupForReset"),
+                        bool(values, "realmBackups.preOperation.requireSuccessfulBackupForDelete"),
+                        bool(values, "realmBackups.preOperation.requireSuccessfulBackupForRestore")),
+                new RealmBackupConfig.Storage(longValue(values, "realmBackups.storage.minimumFreeSpaceGiB"),
+                        longValue(values, "realmBackups.storage.maximumTotalSizeGiB")),
+                new RealmBackupConfig.Retention(integer(values, "realmBackups.retention.keepLatestPerRealm"),
+                        integer(values, "realmBackups.retention.keepDailyDays"),
+                        integer(values, "realmBackups.retention.keepWeeklyWeeks"),
+                        integer(values, "realmBackups.retention.keepMonthlyMonths"),
+                        integer(values, "realmBackups.retention.maximumBackupsPerRealm"),
+                        integer(values, "realmBackups.retention.maximumAgeDays"),
+                        bool(values, "realmBackups.retention.pinnedBackupsNeverExpire")),
+                required(values, "realmBackups.filenameTemplate"),
+                java.time.ZoneId.of(required(values, "realmBackups.filenameTimezone")),
+                integer(values, "realmBackups.maximumQueueLength"),
+                integer(values, "realmBackups.maximumPackagingJobs"),
+                Duration.ofSeconds(longValue(values, "realmBackups.captureTimeoutSeconds")),
+                integer(values, "realmBackups.maximumRetries"),
+                Duration.ofMinutes(longValue(values, "realmBackups.schedulingSpreadMinutes")));
     }
 
     private static Set<RealmPresetId> parsePresetIds(String value) {

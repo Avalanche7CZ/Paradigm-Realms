@@ -92,6 +92,19 @@ tasks.register('wildsResetToolJar', Jar) {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+tasks.register('realmBackupToolJar', Jar) {
+    group = 'build'
+    description = 'Builds the standalone offline same-cell realm restore tool.'
+    archiveClassifier = 'realm-backup-tool'
+    dependsOn project(':common').tasks.named('classes')
+    from(project(':common').sourceSets.main.output)
+    manifest {
+        attributes 'Main-Class': 'eu.avalanche7.paradigmrealms.backup.offline.RealmBackupRestoreTool'
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 tasks.named('build') {
     dependsOn tasks.named('wildsResetToolJar')
+    dependsOn tasks.named('realmBackupToolJar')
 }

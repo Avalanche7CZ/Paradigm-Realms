@@ -11,7 +11,14 @@
     "ExplosionMixin",
     "FarmlandBlockMixin",
     "ItemEntityMixin",
-    "PistonBlockMixin"
+    "PistonBlockMixin",
+    "ScreenHandlerMixin",
+    "VersionedChunkStorageAccessor",
+    "ServerChunkLoadingManagerAccessor",
+    "SerializingRegionBasedStorageAccessor",
+    "ServerWorldAccessor",
+    "ServerEntityManagerAccessor",
+    "EntityChunkDataAccessAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

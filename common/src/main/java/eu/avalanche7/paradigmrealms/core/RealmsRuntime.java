@@ -262,13 +262,33 @@ public final class RealmsRuntime {
     }
 
     public RealmLifecycleManagementService.Result confirmReset(UUID owner, String token) {
+        ResetConfirmation confirmation = consumeResetConfirmation(owner, token);
+        if (!confirmation.valid()) {
+            return confirmation.invalidResult();
+        }
+        return executeReset(owner, confirmation.preset().orElseThrow());
+    }
+
+    public ResetConfirmation consumeResetConfirmation(UUID owner, String token) {
         Realm realm = repository.findByOwner(owner).orElse(null);
-        if (realm == null) return RealmLifecycleManagementService.Result.noRealm();
-        return confirmations.consume(owner, realm.id(), RealmConfirmationService.Kind.RESET, token)
-                .map(confirmation -> lifecycleManagement.reset(owner,
-                        new RealmPresetId(confirmation.preset().orElseThrow())))
-                .orElse(new RealmLifecycleManagementService.Result(
-                        RealmLifecycleManagementService.Status.CONFIRMATION_INVALID, Optional.of(realm), Optional.empty()));
+        if (realm == null) {
+            return ResetConfirmation.noRealm();
+        }
+        Optional<RealmConfirmationService.Confirmation> confirmation = confirmations.consume(
+                owner,
+                realm.id(),
+                RealmConfirmationService.Kind.RESET,
+                token);
+        return confirmation
+                .map(value -> new ResetConfirmation(
+                        Optional.of(realm),
+                        Optional.of(new RealmPresetId(value.preset().orElseThrow())),
+                        true))
+                .orElseGet(() -> new ResetConfirmation(Optional.of(realm), Optional.empty(), false));
+    }
+
+    public RealmLifecycleManagementService.Result executeReset(UUID owner, RealmPresetId preset) {
+        return lifecycleManagement.reset(owner, preset);
     }
 
     public Optional<String> requestDeleteConfirmation(UUID owner) {
@@ -277,12 +297,28 @@ public final class RealmsRuntime {
     }
 
     public RealmLifecycleManagementService.Result confirmDelete(UUID owner, String token) {
+        DeleteConfirmation confirmation = consumeDeleteConfirmation(owner, token);
+        if (!confirmation.valid()) {
+            return confirmation.invalidResult();
+        }
+        return executeDelete(owner);
+    }
+
+    public DeleteConfirmation consumeDeleteConfirmation(UUID owner, String token) {
         Realm realm = repository.findByOwner(owner).orElse(null);
-        if (realm == null) return RealmLifecycleManagementService.Result.noRealm();
-        return confirmations.consume(owner, realm.id(), RealmConfirmationService.Kind.DELETE, token)
-                .map(confirmation -> lifecycleManagement.delete(owner))
-                .orElse(new RealmLifecycleManagementService.Result(
-                        RealmLifecycleManagementService.Status.CONFIRMATION_INVALID, Optional.of(realm), Optional.empty()));
+        if (realm == null) {
+            return DeleteConfirmation.noRealm();
+        }
+        boolean valid = confirmations.consume(
+                owner,
+                realm.id(),
+                RealmConfirmationService.Kind.DELETE,
+                token).isPresent();
+        return new DeleteConfirmation(Optional.of(realm), valid);
+    }
+
+    public RealmLifecycleManagementService.Result executeDelete(UUID owner) {
+        return lifecycleManagement.delete(owner);
     }
 
     public void cancelReset(UUID owner) {
@@ -339,6 +375,41 @@ public final class RealmsRuntime {
         hooks.realmIndexChanged();
         if (revalidatePresence) {
             result.realm().ifPresent(realm -> hooks.revalidateRealmPresence(realm.id()));
+        }
+    }
+
+    public record ResetConfirmation(
+            Optional<Realm> realm,
+            Optional<RealmPresetId> preset,
+            boolean valid) {
+        static ResetConfirmation noRealm() {
+            return new ResetConfirmation(Optional.empty(), Optional.empty(), false);
+        }
+
+        public RealmLifecycleManagementService.Result invalidResult() {
+            if (realm.isEmpty()) {
+                return RealmLifecycleManagementService.Result.noRealm();
+            }
+            return new RealmLifecycleManagementService.Result(
+                    RealmLifecycleManagementService.Status.CONFIRMATION_INVALID,
+                    realm,
+                    Optional.empty());
+        }
+    }
+
+    public record DeleteConfirmation(Optional<Realm> realm, boolean valid) {
+        static DeleteConfirmation noRealm() {
+            return new DeleteConfirmation(Optional.empty(), false);
+        }
+
+        public RealmLifecycleManagementService.Result invalidResult() {
+            if (realm.isEmpty()) {
+                return RealmLifecycleManagementService.Result.noRealm();
+            }
+            return new RealmLifecycleManagementService.Result(
+                    RealmLifecycleManagementService.Status.CONFIRMATION_INVALID,
+                    realm,
+                    Optional.empty());
         }
     }
 }

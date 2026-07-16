@@ -56,6 +56,39 @@ public final class RealmPermissionNodes {
             "paradigm.realms.settings", "Allows focused realm setting management.", 0, "realm.settings");
     public static final RealmPermissionNode TRANSFER = node(
             "paradigm.realms.transfer", "Allows safe two-party realm ownership transfer.", 0, "realm.transfer");
+    public static final RealmPermissionNode BACKUP_SELF = node(
+            "paradigm.realms.backup.self", "Allows a player to request a backup of their realm.", 0,
+            "realm.backup.self");
+    public static final RealmPermissionNode BACKUP_SELF_LIST = node(
+            "paradigm.realms.backup.self.list", "Allows a player to list their realm backups.", 0,
+            "realm.backup.self.list");
+    public static final RealmPermissionNode ADMIN_BACKUPS_STATUS = node(
+            "paradigm.realms.admin.backups.status", "Allows backup queue and scheduler inspection.", 3,
+            "admin.backups.status");
+    public static final RealmPermissionNode ADMIN_BACKUPS_CREATE = node(
+            "paradigm.realms.admin.backups.create", "Allows administrator realm backup creation.", 3,
+            "admin.backups.create");
+    public static final RealmPermissionNode ADMIN_BACKUPS_LIST = node(
+            "paradigm.realms.admin.backups.list", "Allows backup catalog inspection.", 3,
+            "admin.backups.list");
+    public static final RealmPermissionNode ADMIN_BACKUPS_VERIFY = node(
+            "paradigm.realms.admin.backups.verify", "Allows backup archive verification.", 3,
+            "admin.backups.verify");
+    public static final RealmPermissionNode ADMIN_BACKUPS_PIN = node(
+            "paradigm.realms.admin.backups.pin", "Allows pinning retained realm backups.", 4,
+            "admin.backups.pin");
+    public static final RealmPermissionNode ADMIN_BACKUPS_DELETE = node(
+            "paradigm.realms.admin.backups.delete", "Allows confirmed backup deletion.", 4,
+            "admin.backups.delete");
+    public static final RealmPermissionNode ADMIN_BACKUPS_RESTORE = node(
+            "paradigm.realms.admin.backups.restore", "Allows preparation of offline realm restores.", 4,
+            "admin.backups.restore");
+    public static final RealmPermissionNode ADMIN_BACKUPS_SCHEDULE = node(
+            "paradigm.realms.admin.backups.schedule", "Allows automatic backup scheduling controls.", 3,
+            "admin.backups.schedule");
+    public static final RealmPermissionNode ADMIN_BACKUPS_PRUNE = node(
+            "paradigm.realms.admin.backups.prune", "Allows backup retention preview and pruning.", 4,
+            "admin.backups.prune");
     public static final RealmPermissionNode ADMIN_ARCHIVES = node(
             "paradigm.realms.admin.archives", "Allows archive inspection and restore.", 3, "admin.archives");
     public static final RealmPermissionNode ADMIN_OPERATIONS = node(
@@ -101,9 +134,13 @@ public final class RealmPermissionNodes {
             CREATE, HOME, SET_SPAWN, INFO,
             VISIT, INVITE, INVITES, ACCEPT, DECLINE, REMOVE, LEAVE, MEMBERS, ACCESS,
             PRESETS, PRESET_SELECT, RESET, DELETE, NAME, DESCRIPTION, PUBLIC_LIST, LISTING, KICK, BAN,
-            ROLE_MANAGE, SETTINGS, TRANSFER, WILDS_ENTER, WILDS_RTP, WILDS_SPAWN, WILDS_INFO,
+            ROLE_MANAGE, SETTINGS, TRANSFER, BACKUP_SELF, BACKUP_SELF_LIST,
+            WILDS_ENTER, WILDS_RTP, WILDS_SPAWN, WILDS_INFO,
             ADMIN_INSPECT, ADMIN_VALIDATE, ADMIN_REPAIR, ADMIN_SUPPORT, ADMIN_CONFIG,
             ADMIN_PRESETS, ADMIN_BYPASS,
+            ADMIN_BACKUPS_STATUS, ADMIN_BACKUPS_CREATE, ADMIN_BACKUPS_LIST,
+            ADMIN_BACKUPS_VERIFY, ADMIN_BACKUPS_PIN, ADMIN_BACKUPS_DELETE,
+            ADMIN_BACKUPS_RESTORE, ADMIN_BACKUPS_SCHEDULE, ADMIN_BACKUPS_PRUNE,
             ADMIN_ARCHIVES, ADMIN_OPERATIONS,
             ADMIN_WILDS_STATUS, ADMIN_WILDS_VALIDATE, ADMIN_WILDS_MANAGE,
             ADMIN_WILDS_RESET, ADMIN_WILDS_BACKUPS, COMPATIBILITY);

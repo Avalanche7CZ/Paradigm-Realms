@@ -358,7 +358,8 @@ public final class RealmMembershipCommandModule {
     }
 
     private static int membershipError(CommandSource source, MembershipResult result) {
-        source.sendError("Realm membership operation failed: " + result.status());
+        source.sendError(eu.avalanche7.paradigmrealms.message.PlayerMessageMappings
+                .membershipFailure(result.status()));
         return 0;
     }
 

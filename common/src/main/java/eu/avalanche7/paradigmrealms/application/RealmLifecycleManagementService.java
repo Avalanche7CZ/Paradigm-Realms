@@ -311,7 +311,9 @@ public final class RealmLifecycleManagementService {
         CONFIRMATION_INVALID,
         RESTORED,
         RESTORE_CONFLICT,
-        NOT_ARCHIVED
+        NOT_ARCHIVED,
+        PRE_OPERATION_BACKUP_QUEUED,
+        PRE_OPERATION_BACKUP_FAILED
     }
 
     public record Result(Status status, Optional<Realm> source, Optional<Realm> replacement) {

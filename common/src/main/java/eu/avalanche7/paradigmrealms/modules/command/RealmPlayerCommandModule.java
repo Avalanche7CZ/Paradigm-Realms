@@ -127,8 +127,13 @@ public final class RealmPlayerCommandModule {
         PlayerReference player = requirePlayer(source);
         if (runtime == null || player == null) return 0;
         var result = runtime.confirmReset(player.uuid(), token);
+        if (result.status()
+                == eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.PRE_OPERATION_BACKUP_QUEUED) {
+            source.sendFeedback("A safety backup is being created first. Your realm will be recreated after it is verified.");
+            return 1;
+        }
         if (result.status() != eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.RESET_COMPLETED) {
-            source.sendError("Realm reset was not completed: " + result.status());
+            source.sendError(resetFailureMessage(result.status()));
             return 0;
         }
         source.sendFeedback("Realm reset completed. Your old realm is archived.");
@@ -164,8 +169,13 @@ public final class RealmPlayerCommandModule {
         PlayerReference player = requirePlayer(source);
         if (runtime == null || player == null) return 0;
         var result = runtime.confirmDelete(player.uuid(), token);
+        if (result.status()
+                == eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.PRE_OPERATION_BACKUP_QUEUED) {
+            source.sendFeedback("A safety backup is being created first. Your realm will be archived after it is verified.");
+            return 1;
+        }
         if (result.status() != eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.ARCHIVED) {
-            source.sendError("Realm deletion was not completed: " + result.status());
+            source.sendError(deleteFailureMessage(result.status()));
             return 0;
         }
         source.sendFeedback("Realm archived. Its blocks and allocation remain protected.");
@@ -179,6 +189,33 @@ public final class RealmPlayerCommandModule {
         runtime.cancelDelete(player.uuid());
         source.sendFeedback("Pending realm deletion confirmation cancelled.");
         return 1;
+    }
+
+    private static String resetFailureMessage(
+            eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status status) {
+        return switch (status) {
+            case CONFIRMATION_INVALID -> "That reset confirmation is invalid or has expired.";
+            case PRESET_UNAVAILABLE -> "The selected realm preset is no longer available.";
+            case OPERATION_IN_PROGRESS -> "This realm is already busy with another operation.";
+            case PRE_OPERATION_BACKUP_FAILED ->
+                    "Your realm was not recreated because its safety backup could not be verified.";
+            case RESET_FAILED_OLD_REALM_PRESERVED ->
+                    "Your realm could not be recreated. Your original realm is still active and unchanged.";
+            case NO_REALM -> "You do not have an active realm to recreate.";
+            default -> "Your realm could not be recreated. Your original realm was preserved.";
+        };
+    }
+
+    private static String deleteFailureMessage(
+            eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status status) {
+        return switch (status) {
+            case CONFIRMATION_INVALID -> "That archive confirmation is invalid or has expired.";
+            case OPERATION_IN_PROGRESS -> "This realm is already busy with another operation.";
+            case PRE_OPERATION_BACKUP_FAILED ->
+                    "Your realm was not archived because its safety backup could not be verified.";
+            case NO_REALM -> "You do not have an active realm to archive.";
+            default -> "Your realm could not be archived. It remains active.";
+        };
     }
 
     private static int create(
@@ -208,7 +245,8 @@ public final class RealmPlayerCommandModule {
                         "Realm " + realm.id().value() + " created with preset " + realm.preset() + ".");
                 TeleportResult teleport = runtime.teleportHome(player.uuid(), realm);
                 if (teleport != TeleportResult.SUCCESS) {
-                    source.sendError("Realm created, but teleport failed: " + teleport);
+                    source.sendError("Your realm was created, but you could not be teleported there. "
+                            + teleportFailureMessage(teleport));
                 }
                 return 1;
             }
@@ -258,7 +296,7 @@ public final class RealmPlayerCommandModule {
         }
         TeleportResult result = runtime.teleportHome(player.uuid(), realm.orElseThrow());
         if (result != TeleportResult.SUCCESS) {
-            source.sendError("Unable to teleport home: " + result);
+            source.sendError(teleportFailureMessage(result));
             return 0;
         }
         messages.send(source, "<color:aqua>Welcome home.</color>", Map.of(), "Welcome home.");
@@ -274,7 +312,7 @@ public final class RealmPlayerCommandModule {
         if (runtime == null || player == null) return 0;
         SetSpawnResult result = runtime.setSpawn(player.uuid());
         if (result != SetSpawnResult.SUCCESS) {
-            source.sendError("Unable to set realm spawn: " + result);
+            source.sendError(setSpawnFailureMessage(result));
             return 0;
         }
         messages.send(source, "<color:aqua>Realm spawn updated.</color>", Map.of(),
@@ -315,7 +353,7 @@ public final class RealmPlayerCommandModule {
         if (runtime == null || player == null) return 0;
         TeleportResult result = runtime.leaveForeignRealm(player.uuid());
         if (result != TeleportResult.SUCCESS) {
-            source.sendError("Unable to leave the realm safely: " + result);
+            source.sendError(teleportFailureMessage(result));
             return 0;
         }
         source.sendFeedback("You left the realm safely.");
@@ -340,6 +378,30 @@ public final class RealmPlayerCommandModule {
         PlayerReference player = source.player().orElse(null);
         if (player == null) source.sendError("This command can only be used by a player.");
         return player;
+    }
+
+    private static String teleportFailureMessage(TeleportResult result) {
+        return switch (result) {
+            case REALM_NOT_ACTIVE -> "Your realm is not active right now.";
+            case WORLD_UNAVAILABLE -> "The destination world is unavailable right now.";
+            case OUTSIDE_BOUNDS -> "The saved destination is outside the realm boundary.";
+            case OUTSIDE_WORLD_BORDER -> "The saved destination is outside the world border.";
+            case UNSAFE_DESTINATION ->
+                    "Your realm spawn is not safe right now. Ask an administrator to validate it.";
+            case RIDING_OR_HAS_PASSENGERS -> "Dismount before teleporting.";
+            case SUCCESS -> "Teleport completed.";
+        };
+    }
+
+    private static String setSpawnFailureMessage(SetSpawnResult result) {
+        return switch (result) {
+            case NO_REALM -> "You do not own a realm.";
+            case REALM_NOT_ACTIVE -> "Your realm is not active right now.";
+            case NOT_IN_REALMS -> "Stand inside your realm before setting its spawn.";
+            case OUTSIDE_BOUNDS -> "Realm spawn must be inside the buildable area.";
+            case UNSAFE_DESTINATION -> "That position is not safe enough to use as the realm spawn.";
+            case SUCCESS -> "Realm spawn updated.";
+        };
     }
 
     private static RealmPlayerCommandRuntime requireRuntime(

@@ -358,7 +358,8 @@ public final class RealmOwnerCommandModule {
                 owner.uuid(), ownerName, target.uuid(), target.name());
         if (result.status()
                 != eu.avalanche7.paradigmrealms.application.RealmOwnershipTransferService.Status.OFFERED) {
-            source.sendError("Realm transfer offer failed: " + result.status());
+            source.sendError(eu.avalanche7.paradigmrealms.message.PlayerMessageMappings
+                    .transferFailure(result.status()));
             return 0;
         }
         source.sendFeedback("Ownership transfer offered to " + target.name() + ".");
@@ -381,7 +382,8 @@ public final class RealmOwnerCommandModule {
                 ? eu.avalanche7.paradigmrealms.application.RealmOwnershipTransferService.Status.COMPLETED
                 : eu.avalanche7.paradigmrealms.application.RealmOwnershipTransferService.Status.DECLINED;
         if (result.status() != expected) {
-            source.sendError("Realm transfer response failed: " + result.status());
+            source.sendError(eu.avalanche7.paradigmrealms.message.PlayerMessageMappings
+                    .transferFailure(result.status()));
             return 0;
         }
         source.sendFeedback(accept ? "You now own the realm." : "Realm transfer declined.");
@@ -448,7 +450,8 @@ public final class RealmOwnerCommandModule {
         }
         TeleportResult teleport = runtime.visit(player.uuid(), realm);
         if (teleport != TeleportResult.SUCCESS) {
-            source.sendError("Unable to visit realm: " + teleport);
+            source.sendError(eu.avalanche7.paradigmrealms.message.PlayerMessageMappings
+                    .teleportFailure(teleport));
             return 0;
         }
         source.sendFeedback("Visiting " + realm.displayName() + ".");
@@ -461,11 +464,8 @@ public final class RealmOwnerCommandModule {
             source.sendFeedback(success);
             return 1;
         }
-        if (result.status() == RealmOwnerManagementService.Status.SERVER_LOCKED) {
-            source.sendError("That setting is locked by the server.");
-            return 0;
-        }
-        source.sendError("Realm operation failed: " + result.status());
+        source.sendError(eu.avalanche7.paradigmrealms.message.PlayerMessageMappings
+                .ownerMutationFailure(result.status()));
         return 0;
     }
 

@@ -163,8 +163,9 @@ public final class WildsCommandModule {
         var state = runtime.wildsState();
         source.sendFeedback("Wilds state=" + state.lifecycle() + " entryOpen="
                 + state.lifecycle().entryOpen() + " verified=" + state.generationVerified()
-                + " epoch=" + state.activeEpoch() + " profile=" + state.activeProfile().orElse(null)
-                + " nextReset=" + state.nextScheduledReset().orElse(null)
+                + " epoch=" + state.activeEpoch()
+                + " profile=" + state.activeProfile().map(Object::toString).orElse("not set")
+                + " nextReset=" + state.nextScheduledReset().map(Object::toString).orElse("not scheduled")
                 + " operation=" + state.operation().map(value -> value.operationId().toString()).orElse("none"));
         state.failure().ifPresent(failure -> source.sendError(
                 "Failure " + failure.code() + ": " + failure.detail()));

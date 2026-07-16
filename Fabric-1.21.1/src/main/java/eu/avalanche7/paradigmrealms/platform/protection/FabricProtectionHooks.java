@@ -49,6 +49,13 @@ public final class FabricProtectionHooks {
         return current == null || current.allowOrNotify(player, world, position, action);
     }
 
+    public static boolean allowContainerMutation(ServerPlayerEntity player) {
+        FabricProtectionService current = service;
+        return current == null || current.backupMutationAllowed(
+                player.getWorld(),
+                player.getBlockPos());
+    }
+
     public static void filterExplosion(Explosion explosion, World world, BlockPos origin) {
         FabricProtectionService current = service;
         if (current == null) return;
@@ -66,6 +73,10 @@ public final class FabricProtectionHooks {
             return;
         }
         if (!isRealms(world)) return;
+        if (!current.backupMutationAllowed(world, origin)) {
+            affected.clear();
+            return;
+        }
         boolean actorMayModifyOrigin = true;
         java.util.Optional<java.util.UUID> actor = FabricProtectionService.responsiblePlayer(explosion.getEntity());
         if (actor.isPresent()) {
@@ -77,7 +88,9 @@ public final class FabricProtectionHooks {
                     player != null && current.bypassEnabled(player.getUuid())).allowed();
         }
         boolean allowedOrigin = actorMayModifyOrigin;
-        affected.removeIf(target -> !allowedOrigin || !current.allowsExplosion(origin, target));
+        affected.removeIf(target -> !allowedOrigin
+                || !current.backupMutationAllowed(world, target)
+                || !current.allowsExplosion(origin, target));
     }
 
     public static boolean allowPiston(
@@ -95,14 +108,18 @@ public final class FabricProtectionHooks {
             return true;
         }
         if (!isRealms(world)) return true;
+        if (!current.backupMutationAllowed(world, piston)) return false;
         for (BlockPos source : moved) {
-            if (!current.allowsEnvironmental(piston, source)
+            if (!current.backupMutationAllowed(world, source)
+                    || !current.backupMutationAllowed(world, source.offset(motionDirection))
+                    || !current.allowsEnvironmental(piston, source)
                     || !current.allowsEnvironmental(piston, source.offset(motionDirection))) {
                 return false;
             }
         }
         for (BlockPos destroyed : broken) {
-            if (!current.allowsEnvironmental(piston, destroyed)) return false;
+            if (!current.backupMutationAllowed(world, destroyed)
+                    || !current.allowsEnvironmental(piston, destroyed)) return false;
         }
         return true;
     }
