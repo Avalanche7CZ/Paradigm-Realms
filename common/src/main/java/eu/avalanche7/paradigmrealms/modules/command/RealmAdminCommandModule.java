@@ -217,7 +217,8 @@ public final class RealmAdminCommandModule {
             return 0;
         }
         feedback(source, messages, summary(realm));
-        feedback(source, messages, "allocation=" + realm.allocation().cell()
+        feedback(source, messages, "allocationProfile=" + realm.allocation().profile()
+                + " allocation=" + realm.allocation().cell()
                 + " archivedAt=" + realm.archivedAt().orElseThrow()
                 + " replacementOf=" + realm.replacementOf().map(Object::toString).orElse("none")
                 + " replacedBy=" + realm.replacedBy().map(Object::toString).orElse("none"));
@@ -352,6 +353,7 @@ public final class RealmAdminCommandModule {
         return runtime.inspectRealm(new RealmId(id)).map(realm -> {
             feedback(source, messages, summary(realm));
             feedback(source, messages, "dimension=" + realm.dimension()
+                    + " allocationProfile=" + realm.allocation().profile()
                     + " cell=" + realm.allocation().cell()
                     + " cellBounds=" + realm.allocation().cellBounds()
                     + " buildable=" + realm.allocation().buildableBounds());
@@ -394,7 +396,8 @@ public final class RealmAdminCommandModule {
         RealmAdminCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         if (runtime == null) return 0;
         RealmAllocation allocation = runtime.previewAllocation(new RealmId(id));
-        feedback(source, messages, "Realm " + id + " cell=" + allocation.cell()
+        feedback(source, messages, "Realm " + id + " allocationProfile=" + allocation.profile()
+                + " cell=" + allocation.cell()
                 + " cellBounds=" + allocation.cellBounds()
                 + " buildable=" + allocation.buildableBounds());
         return 1;

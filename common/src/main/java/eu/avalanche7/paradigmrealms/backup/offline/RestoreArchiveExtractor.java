@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -31,6 +32,7 @@ final class RestoreArchiveExtractor {
         for (BackupStorageKind kind : BackupStorageKind.values()) {
             extracted.put(kind, new HashMap<>());
         }
+        Map<String, Path> regionFiles = new LinkedHashMap<>();
 
         try (InputStream input = Files.newInputStream(archive);
              ZipInputStream zip = new ZipInputStream(input)) {
@@ -40,8 +42,12 @@ final class RestoreArchiveExtractor {
                 if (target != null) {
                     Path path = target.path();
                     Files.createDirectories(path.getParent());
-                    copyBounded(zip, path);
-                    extracted.get(target.kind()).put(target.coordinate(), path);
+                    copyBounded(zip, path, target.maximumBytes());
+                    if (target.kind() == null) {
+                        regionFiles.put(target.archiveName(), path);
+                    } else {
+                        extracted.get(target.kind()).put(target.coordinate(), path);
+                    }
                 }
                 zip.closeEntry();
             }
@@ -50,7 +56,7 @@ final class RestoreArchiveExtractor {
         if (!expected.isEmpty()) {
             throw new IOException("verified archive changed while it was being extracted");
         }
-        return new ExtractedChunks(copy(extracted), stagingDirectory);
+        return new ExtractedChunks(copy(extracted), Map.copyOf(regionFiles), stagingDirectory);
     }
 
     private static Map<String, Target> expectedEntries(
@@ -67,10 +73,15 @@ final class RestoreArchiveExtractor {
                         new Target(kind, coordinate, destination));
             }
         }
+        for (String name : manifest.regionFiles()) {
+            Path destination = stagingDirectory.resolve("region-copy").resolve(name);
+            expected.put(name, new Target(null, null, destination, name,
+                    BackupArchiveVerifier.MAX_REGION_FILE_BYTES));
+        }
         return expected;
     }
 
-    private static void copyBounded(ZipInputStream input, Path destination) throws IOException {
+    private static void copyBounded(ZipInputStream input, Path destination, long maximumBytes) throws IOException {
         try (var output = Files.newOutputStream(
                 destination,
                 StandardOpenOption.CREATE_NEW,
@@ -83,8 +94,8 @@ final class RestoreArchiveExtractor {
                     continue;
                 }
                 copied += read;
-                if (copied > BackupArchiveVerifier.MAX_CHUNK_BYTES) {
-                    throw new IOException("chunk payload exceeds the restore limit");
+                if (copied > maximumBytes) {
+                    throw new IOException("backup payload exceeds the restore limit");
                 }
                 output.write(buffer, 0, read);
             }
@@ -102,9 +113,17 @@ final class RestoreArchiveExtractor {
     private record Target(
             BackupStorageKind kind,
             ChunkCoordinate coordinate,
-            Path path) {}
+            Path path,
+            String archiveName,
+            long maximumBytes) {
+        Target(BackupStorageKind kind, ChunkCoordinate coordinate, Path path) {
+            this(kind, coordinate, path, coordinate.archiveName(kind),
+                    BackupArchiveVerifier.MAX_CHUNK_BYTES);
+        }
+    }
 
     record ExtractedChunks(
             Map<BackupStorageKind, Map<ChunkCoordinate, Path>> chunks,
+            Map<String, Path> regionFiles,
             Path stagingDirectory) {}
 }

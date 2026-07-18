@@ -5,10 +5,10 @@ import eu.avalanche7.paradigmrealms.region.CellCoordinate;
 import eu.avalanche7.paradigmrealms.region.ChunkBounds;
 
 public final class RealmAllocator {
-    public static final int CELL_SIZE_CHUNKS = 16;
-    public static final int BUILDABLE_SIZE_CHUNKS = 10;
-    public static final int GUARD_INSET_CHUNKS = 3;
-    public static final int TOTAL_SEPARATION_CHUNKS = 6;
+    public static final int CELL_SIZE_CHUNKS = 32;
+    public static final int BUILDABLE_SIZE_CHUNKS = 16;
+    public static final int GUARD_INSET_CHUNKS = 8;
+    public static final int TOTAL_SEPARATION_CHUNKS = 16;
     public static final int MAX_RING = 113_280;
     public static final long MAX_REALM_ID = 51_329_886_721L;
 
@@ -28,7 +28,7 @@ public final class RealmAllocator {
                 Math.addExact(minZ, GUARD_INSET_CHUNKS),
                 Math.addExact(minX, GUARD_INSET_CHUNKS + BUILDABLE_SIZE_CHUNKS - 1),
                 Math.addExact(minZ, GUARD_INSET_CHUNKS + BUILDABLE_SIZE_CHUNKS - 1));
-        return new RealmAllocation(cell, cellBounds, buildable);
+        return new RealmAllocation(AllocationProfile.REGION_ALIGNED_32_V1, cell, cellBounds, buildable);
     }
 
     public CellCoordinate mapToCell(RealmId realmId) {
@@ -83,6 +83,10 @@ public final class RealmAllocator {
     }
 
     private static int checkedCellOrigin(int gridCoordinate) {
-        return Math.toIntExact(Math.multiplyExact((long) gridCoordinate, CELL_SIZE_CHUNKS));
+        return checkedCellOrigin(gridCoordinate, CELL_SIZE_CHUNKS);
+    }
+
+    private static int checkedCellOrigin(int gridCoordinate, int size) {
+        return Math.toIntExact(Math.multiplyExact((long) gridCoordinate, size));
     }
 }

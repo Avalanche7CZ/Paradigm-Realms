@@ -81,6 +81,7 @@ public final class RealmSchemaV1Codec {
         value.put("owner_uuid", string(realm.ownerUuid()));
         value.put("state", string(realm.state()));
         value.put("dimension", string(realm.dimension()));
+        value.put("allocation_profile", string(realm.allocationProfile()));
         value.put("cell_x", number(realm.cellX()));
         value.put("cell_z", number(realm.cellZ()));
         value.put("cell_min_chunk_x", number(realm.cellMinChunkX()));
@@ -152,6 +153,7 @@ public final class RealmSchemaV1Codec {
                 stringValue(value, "owner_uuid", path),
                 stringValue(value, "state", path),
                 stringValue(value, "dimension", path),
+                stringValue(value, "allocation_profile", path),
                 intValue(value, "cell_x", path), intValue(value, "cell_z", path),
                 intValue(value, "cell_min_chunk_x", path), intValue(value, "cell_min_chunk_z", path),
                 intValue(value, "cell_max_chunk_x", path), intValue(value, "cell_max_chunk_z", path),

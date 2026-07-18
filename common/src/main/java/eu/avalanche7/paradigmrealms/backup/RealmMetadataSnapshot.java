@@ -9,7 +9,8 @@ import java.util.UUID;
 public record RealmMetadataSnapshot(
         int schemaVersion, long realmId, UUID ownerUuid, String ownerNameSnapshot,
         String displayName, String description, String presetId, String lifecycleState,
-        String dimension, BackupCellBounds allocation, double spawnX, double spawnY, double spawnZ,
+        String dimension, String allocationProfile, BackupCellBounds allocation,
+        double spawnX, double spawnY, double spawnZ,
         float spawnYaw, float spawnPitch, String accessPolicy, List<UUID> members,
         List<UUID> managers, List<UUID> invitedVisitors, Map<UUID, String> bans,
         Map<String, Boolean> settings, boolean listed, Instant createdAt) {
@@ -22,6 +23,7 @@ public record RealmMetadataSnapshot(
         presetId = bounded(presetId, 256, "presetId");
         lifecycleState = bounded(lifecycleState, 64, "lifecycleState");
         dimension = bounded(dimension, 256, "dimension");
+        allocationProfile = bounded(allocationProfile, 64, "allocationProfile");
         Objects.requireNonNull(allocation, "allocation");
         accessPolicy = bounded(accessPolicy, 64, "accessPolicy");
         members = List.copyOf(Objects.requireNonNull(members, "members"));
@@ -30,6 +32,19 @@ public record RealmMetadataSnapshot(
         bans = Map.copyOf(Objects.requireNonNull(bans, "bans"));
         settings = Map.copyOf(Objects.requireNonNull(settings, "settings"));
         Objects.requireNonNull(createdAt, "createdAt");
+    }
+
+    public RealmMetadataSnapshot(
+            int schemaVersion, long realmId, UUID ownerUuid, String ownerNameSnapshot,
+            String displayName, String description, String presetId, String lifecycleState,
+            String dimension, BackupCellBounds allocation, double spawnX, double spawnY, double spawnZ,
+            float spawnYaw, float spawnPitch, String accessPolicy, List<UUID> members,
+            List<UUID> managers, List<UUID> invitedVisitors, Map<UUID, String> bans,
+            Map<String, Boolean> settings, boolean listed, Instant createdAt) {
+        this(schemaVersion, realmId, ownerUuid, ownerNameSnapshot, displayName, description, presetId,
+                lifecycleState, dimension, "custom-v1", allocation, spawnX, spawnY, spawnZ,
+                spawnYaw, spawnPitch, accessPolicy, members, managers, invitedVisitors, bans, settings,
+                listed, createdAt);
     }
 
     private static String bounded(String value, int maximum, String name) {

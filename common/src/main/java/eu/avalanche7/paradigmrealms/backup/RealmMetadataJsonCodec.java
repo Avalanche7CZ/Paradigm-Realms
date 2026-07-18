@@ -16,7 +16,8 @@ public final class RealmMetadataJsonCodec {
         value.put("ownerUuid", snapshot.ownerUuid().toString()); value.put("ownerNameSnapshot", snapshot.ownerNameSnapshot());
         value.put("displayName", snapshot.displayName()); value.put("description", snapshot.description());
         value.put("presetId", snapshot.presetId()); value.put("lifecycleState", snapshot.lifecycleState());
-        value.put("dimension", snapshot.dimension()); value.put("allocation", BackupManifestJsonCodec.bounds(snapshot.allocation()));
+        value.put("dimension", snapshot.dimension()); value.put("allocationProfile", snapshot.allocationProfile());
+        value.put("allocation", BackupManifestJsonCodec.bounds(snapshot.allocation()));
         Map<String, Object> spawn = new LinkedHashMap<>();
         spawn.put("x", snapshot.spawnX()); spawn.put("y", snapshot.spawnY()); spawn.put("z", snapshot.spawnZ());
         spawn.put("yaw", snapshot.spawnYaw()); spawn.put("pitch", snapshot.spawnPitch()); value.put("spawn", spawn);
@@ -56,6 +57,7 @@ public final class RealmMetadataJsonCodec {
                 BackupManifestJsonCodec.string(value, "presetId", "root"),
                 BackupManifestJsonCodec.string(value, "lifecycleState", "root"),
                 BackupManifestJsonCodec.string(value, "dimension", "root"),
+                BackupManifestJsonCodec.optionalString(value, "allocationProfile").orElse("custom-v1"),
                 BackupManifestJsonCodec.decodeBounds(BackupManifestJsonCodec.object(
                         BackupManifestJsonCodec.required(value, "allocation", "root"), "root.allocation")),
                 decimal(spawn, "x"), decimal(spawn, "y"), decimal(spawn, "z"),

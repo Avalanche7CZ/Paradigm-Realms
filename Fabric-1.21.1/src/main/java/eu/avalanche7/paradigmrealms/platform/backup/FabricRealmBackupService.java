@@ -108,7 +108,8 @@ public final class FabricRealmBackupService implements AutoCloseable {
         this.captureExecutor = Executors.newFixedThreadPool(
                 2,
                 backupThreadFactory("capture"));
-        this.storage = new FabricBackupStorageAccess(server, captureExecutor);
+        this.storage = new FabricBackupStorageAccess(server, captureExecutor,
+                paths.worldRoot().resolve("dimensions/paradigm_realms/realms"));
         this.catalog = new FabricBackupCatalogService(paths, config, clock);
         Instant schedulerEnabledAt = FabricBackupScheduleState.loadOrCreate(
                 paths.scheduleStateFile(),
@@ -444,6 +445,7 @@ public final class FabricRealmBackupService implements AutoCloseable {
                         context.world(),
                         bounds,
                         context.stagingDirectory(),
+                        eu.avalanche7.paradigmrealms.backup.BackupStrategySelector.select(realm.allocation()),
                         config.captureTimeout(),
                         (captured, total) -> notifier.progress(realm, captured, total))
                 .whenComplete((captured, failure) -> server.execute(() ->
@@ -515,7 +517,7 @@ public final class FabricRealmBackupService implements AutoCloseable {
             BackupOperation completed = transition(verifying, BackupLifecycleState.COMPLETED);
             audit(completed, "BACKUP_COMPLETED", "COMPLETED", Map.of(
                     "sizeBytes", Long.toString(entry.sizeBytes()),
-                    "chunks", Integer.toString(packaged.manifest().totalChunkCount()),
+                    "payloadFiles", Integer.toString(entry.payloadFileCount()),
                     "captureMillis", Long.toString(captured.captureDuration().toMillis())), true);
             notifier.completed(context.realm(), entry, captured.captureDuration());
             complete(completed.backupId(), true, Optional.of(entry));

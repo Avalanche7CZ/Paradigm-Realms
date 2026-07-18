@@ -52,18 +52,18 @@ public record RealmPresetDefinition(
             throw new IllegalArgumentException("preset display name and description cannot be blank");
         }
         if (!bounds.contains(spawn)) throw new IllegalArgumentException("preset spawn must be inside bounds");
-        if (requiredBuildableChunksX < 1 || requiredBuildableChunksX > 10
-                || requiredBuildableChunksZ < 1 || requiredBuildableChunksZ > 10) {
-            throw new IllegalArgumentException("required buildable dimensions must be between 1 and 10 chunks");
+        if (requiredBuildableChunksX < 1 || requiredBuildableChunksX > 16
+                || requiredBuildableChunksZ < 1 || requiredBuildableChunksZ > 16) {
+            throw new IllegalArgumentException("required buildable dimensions must be between 1 and 16 chunks");
         }
         if (bounds.width() > requiredBuildableChunksX * 16
                 || bounds.depth() > requiredBuildableChunksZ * 16) {
             throw new IllegalArgumentException("declared bounds exceed required buildable dimensions");
         }
 
-        if (bounds.minX() < -80 || bounds.maxX() > 79
-                || bounds.minZ() < -80 || bounds.maxZ() > 79) {
-            throw new IllegalArgumentException("declared bounds do not fit the centered 10x10-chunk region");
+        if (bounds.minX() < -128 || bounds.maxX() > 127
+                || bounds.minZ() < -128 || bounds.maxZ() > 127) {
+            throw new IllegalArgumentException("declared bounds do not fit the centered 16x16-chunk region");
         }
         aliases = Set.copyOf(aliases);
         if (aliases.contains(id)) throw new IllegalArgumentException("preset cannot alias itself");

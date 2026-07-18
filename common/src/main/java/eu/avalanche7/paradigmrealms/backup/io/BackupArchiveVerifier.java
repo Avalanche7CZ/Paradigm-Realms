@@ -29,7 +29,8 @@ public final class BackupArchiveVerifier {
     public static final long MAX_MANIFEST_BYTES = 1_048_576;
     public static final long MAX_METADATA_BYTES = 4_194_304;
     public static final long MAX_CHUNK_BYTES = 128L * 1024 * 1024;
-    public static final int MAX_ENTRIES = 800;
+    public static final long MAX_REGION_FILE_BYTES = 1024L * 1024 * 1024;
+    public static final int MAX_ENTRIES = 3_200;
     private final BackupManifestJsonCodec manifestCodec = new BackupManifestJsonCodec();
     private final RealmMetadataJsonCodec metadataCodec = new RealmMetadataJsonCodec();
 
@@ -183,6 +184,7 @@ public final class BackupArchiveVerifier {
                 expected.add(coordinate.archiveName(kind));
             }
         }
+        expected.addAll(manifest.regionFiles());
         if (!names.equals(expected)) {
             Set<String> missing = new HashSet<>(expected);
             missing.removeAll(names);
@@ -228,6 +230,9 @@ public final class BackupArchiveVerifier {
         if (!manifest.cellBounds().equals(metadata.allocation())) {
             failures.add("realm metadata has a different allocation");
         }
+        if (!manifest.allocationProfile().equals(metadata.allocationProfile())) {
+            failures.add("realm metadata has a different allocation profile");
+        }
     }
 
     private static boolean retained(String name) {
@@ -247,6 +252,9 @@ public final class BackupArchiveVerifier {
         }
         if (name.startsWith("chunks/")) {
             return MAX_CHUNK_BYTES;
+        }
+        if (name.startsWith("region/") || name.startsWith("entities/") || name.startsWith("poi/")) {
+            return MAX_REGION_FILE_BYTES;
         }
         return MAX_MANIFEST_BYTES;
     }

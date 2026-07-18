@@ -77,6 +77,12 @@ public final class RealmStateValidator {
                     "next realm ID must be greater than every persisted realm ID"));
         }
 
+        try {
+            eu.avalanche7.paradigmrealms.region.RealmRegionIndex.from(realms);
+        } catch (IllegalArgumentException exception) {
+            issues.add(ValidationIssue.error("OVERLAPPING_ALLOCATION", "root.realms", exception.getMessage()));
+        }
+
         Map<Long, Realm> realmsById = new HashMap<>();
         realms.forEach(realm -> realmsById.put(realm.id().value(), realm));
         Set<String> invitationKeys = new HashSet<>();

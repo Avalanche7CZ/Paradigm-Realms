@@ -9,6 +9,8 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -18,6 +20,7 @@ import java.util.Set;
 import eu.avalanche7.paradigmrealms.backup.BackupCellBounds;
 import eu.avalanche7.paradigmrealms.backup.BackupManifest;
 import eu.avalanche7.paradigmrealms.backup.BackupStorageKind;
+import eu.avalanche7.paradigmrealms.backup.BackupStrategy;
 import eu.avalanche7.paradigmrealms.backup.ChunkCoordinate;
 import eu.avalanche7.paradigmrealms.backup.RestoreManifestStage;
 import eu.avalanche7.paradigmrealms.backup.RestoreOperationManifest;
@@ -25,6 +28,7 @@ import eu.avalanche7.paradigmrealms.backup.io.BackupArchiveVerifier;
 import eu.avalanche7.paradigmrealms.backup.io.BackupPathSafety;
 import eu.avalanche7.paradigmrealms.backup.io.RestoreManifestFile;
 import eu.avalanche7.paradigmrealms.backup.region.RegionFileRewriter;
+import eu.avalanche7.paradigmrealms.backup.region.RegionCopyCapture;
 
 public final class RealmBackupRestoreTool {
     private static final String REALMS_DIMENSION = "paradigm_realms:realms";
@@ -107,7 +111,14 @@ public final class RealmBackupRestoreTool {
         RestoreArchiveExtractor.ExtractedChunks extracted =
                 new RestoreArchiveExtractor().extract(archive, backup, staging);
         try {
-            rewriteTargetCell(worldRoot, operation, extracted);
+            if (backup.strategy() == BackupStrategy.REGION_COPY) {
+                quarantineRegionFiles(worldRoot, operation);
+                operation = operation.withStage(RestoreManifestStage.TARGET_QUARANTINED, Instant.now());
+                manifestFile.write(manifestPath, operation);
+                replaceRegionFiles(worldRoot, operation, extracted);
+            } else {
+                rewriteTargetCell(worldRoot, operation, extracted);
+            }
             operation = operation.withStage(
                     RestoreManifestStage.REGION_FILES_REWRITTEN,
                     Instant.now());
@@ -125,6 +136,67 @@ public final class RealmBackupRestoreTool {
         System.out.println("Realm " + operation.realmId()
                 + " restored into its original cell. Start the server for runtime verification.");
         return 0;
+    }
+
+    private static void quarantineRegionFiles(
+            Path worldRoot, RestoreOperationManifest operation) throws IOException {
+        Path dimension = BackupPathSafety.resolveInside(worldRoot, operation.dimensionRelativePath(), false);
+        Path quarantine = BackupPathSafety.resolveInside(worldRoot, operation.quarantineRelativePath(), true);
+        Files.createDirectories(quarantine);
+        int regionX = Math.floorDiv(operation.targetBounds().minimumChunkX(), 32);
+        int regionZ = Math.floorDiv(operation.targetBounds().minimumChunkZ(), 32);
+
+        for (BackupStorageKind kind : BackupStorageKind.values()) {
+            String directoryName = RegionCopyCapture.storageDirectory(kind);
+            Path directory = dimension.resolve(directoryName);
+            if (Files.isSymbolicLink(directory)) throw new IOException("symlink in target region storage");
+            if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) continue;
+            try (var files = Files.list(directory)) {
+                for (Path source : files.filter(path -> belongsToRegion(path, regionX, regionZ)).toList()) {
+                    if (Files.isSymbolicLink(source)) throw new IOException("symlink in target region storage");
+                    Path target = BackupPathSafety.resolveInside(quarantine,
+                            directoryName + '/' + source.getFileName(), true);
+                    Files.createDirectories(target.getParent());
+                    if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                        Files.deleteIfExists(source);
+                    } else {
+                        atomicMove(source, target);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void replaceRegionFiles(
+            Path worldRoot,
+            RestoreOperationManifest operation,
+            RestoreArchiveExtractor.ExtractedChunks extracted) throws IOException {
+        Path dimension = BackupPathSafety.resolveInside(worldRoot, operation.dimensionRelativePath(), false);
+        for (Map.Entry<String, Path> entry : extracted.regionFiles().entrySet()) {
+            Path target = BackupPathSafety.resolveInside(dimension, entry.getKey(), true);
+            Files.createDirectories(target.getParent());
+            Path temporary = target.resolveSibling(target.getFileName() + ".restore-" + operation.operationId());
+            Files.copy(entry.getValue(), temporary, StandardCopyOption.COPY_ATTRIBUTES);
+            if (!sha256(temporary).equals(sha256(entry.getValue()))) {
+                Files.deleteIfExists(temporary);
+                throw new IOException("restored region payload failed verification: " + entry.getKey());
+            }
+            atomicMove(temporary, target);
+            if (!sha256(target).equals(sha256(entry.getValue()))) {
+                throw new IOException("published region payload failed verification: " + entry.getKey());
+            }
+        }
+    }
+
+    private static boolean belongsToRegion(Path path, int regionX, int regionZ) {
+        String name = path.getFileName().toString();
+        if (name.equals("r." + regionX + '.' + regionZ + ".mca")) return true;
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("c\\.(-?[0-9]+)\\.(-?[0-9]+)\\.mcc")
+                .matcher(name);
+        return matcher.matches()
+                && Math.floorDiv(Integer.parseInt(matcher.group(1)), 32) == regionX
+                && Math.floorDiv(Integer.parseInt(matcher.group(2)), 32) == regionZ;
     }
 
     private static void rewriteTargetCell(
@@ -193,6 +265,8 @@ public final class RealmBackupRestoreTool {
                 || backup.realmId() != operation.realmId()
                 || !backup.worldIdentity().equals(operation.worldIdentity())
                 || !backup.dimension().equals(operation.dimension())
+                || !backup.allocationProfile().equals(operation.allocationProfile())
+                || backup.strategy() != operation.strategy()
                 || !backup.cellBounds().equals(operation.targetBounds())) {
             throw new IOException("backup identity or allocation does not match the restore manifest");
         }
@@ -219,6 +293,18 @@ public final class RealmBackupRestoreTool {
         String currentIdentity = Files.readString(identityFile, StandardCharsets.UTF_8).strip();
         if (!currentIdentity.equals(operation.worldIdentity())) {
             throw new IOException("restore manifest belongs to a different world");
+        }
+        Path state = BackupPathSafety.resolveInside(worldRoot, "data/paradigm_realms.dat", false);
+        if (!sha256(state).equals(operation.realmStateSha256())) {
+            throw new IOException("Realms persistent state changed after restore preparation");
+        }
+        if (operation.strategy() == BackupStrategy.REGION_COPY
+                && (!"region-aligned-32-v1".equals(operation.allocationProfile())
+                || operation.targetBounds().maximumChunkX() - operation.targetBounds().minimumChunkX() + 1 != 32
+                || operation.targetBounds().maximumChunkZ() - operation.targetBounds().minimumChunkZ() + 1 != 32
+                || Math.floorMod(operation.targetBounds().minimumChunkX(), 32) != 0
+                || Math.floorMod(operation.targetBounds().minimumChunkZ(), 32) != 0)) {
+            throw new IOException("REGION_COPY target no longer describes exactly one owned region");
         }
     }
 
@@ -247,6 +333,29 @@ public final class RealmBackupRestoreTool {
         } catch (OverlappingFileLockException exception) {
             throw new IOException("world session.lock is held in this process", exception);
         }
+    }
+
+    private static void atomicMove(Path source, Path target) throws IOException {
+        try {
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException exception) {
+            throw new IOException("filesystem does not support required atomic region replacement", exception);
+        }
+    }
+
+    private static String sha256(Path path) throws IOException {
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (java.security.NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
+        try (var input = Files.newInputStream(path)) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) >= 0) if (read > 0) digest.update(buffer, 0, read);
+        }
+        return java.util.HexFormat.of().formatHex(digest.digest());
     }
 
     private static void rejectSymlinkChain(Path configuredPath) throws IOException {

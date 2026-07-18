@@ -16,8 +16,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import eu.avalanche7.paradigmrealms.backup.BackupCellBounds;
+import eu.avalanche7.paradigmrealms.backup.BackupStrategy;
 import eu.avalanche7.paradigmrealms.backup.BackupStorageKind;
 import eu.avalanche7.paradigmrealms.backup.ChunkCoordinate;
+import eu.avalanche7.paradigmrealms.backup.region.RegionCopyCapture;
 import eu.avalanche7.paradigmrealms.mixin.EntityChunkDataAccessAccessor;
 import eu.avalanche7.paradigmrealms.mixin.SerializingRegionBasedStorageAccessor;
 import eu.avalanche7.paradigmrealms.mixin.ServerChunkLoadingManagerAccessor;
@@ -40,16 +42,19 @@ import net.minecraft.world.storage.StorageIoWorker;
 final class FabricBackupStorageAccess {
     private final MinecraftServer server;
     private final Executor fileExecutor;
+    private final Path dimensionDirectory;
 
-    FabricBackupStorageAccess(MinecraftServer server, Executor fileExecutor) {
+    FabricBackupStorageAccess(MinecraftServer server, Executor fileExecutor, Path dimensionDirectory) {
         this.server = server;
         this.fileExecutor = fileExecutor;
+        this.dimensionDirectory = dimensionDirectory;
     }
 
     CompletableFuture<CapturedChunks> capture(
             ServerWorld world,
             BackupCellBounds bounds,
             Path stagingDirectory,
+            BackupStrategy strategy,
             Duration timeout,
             ProgressListener progress) {
         if (!server.isOnThread()) {
@@ -76,6 +81,20 @@ final class FabricBackupStorageAccess {
                 ((SerializingRegionBasedStorageAccessor) poiStorage)
                         .paradigmRealms$storageAccess();
         poiAccess.completeAll(true).join();
+
+        if (strategy == BackupStrategy.REGION_COPY) {
+            return CompletableFuture.supplyAsync(() -> {
+                try {
+                    Map<String, Path> files = new RegionCopyCapture().capture(
+                            dimensionDirectory, bounds, stagingDirectory);
+                    progress.updated(files.size(), files.size());
+                    return new CapturedChunks(Map.of(), files, strategy,
+                            Duration.between(startedAt, Instant.now()));
+                } catch (IOException exception) {
+                    throw new java.io.UncheckedIOException(exception);
+                }
+            }, fileExecutor).orTimeout(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        }
 
         StorageIoWorker terrainAccess =
                 ((VersionedChunkStorageAccessor) chunkStorage)
@@ -122,6 +141,8 @@ final class FabricBackupStorageAccess {
                 .orTimeout(timeout.toMillis(), TimeUnit.MILLISECONDS)
                 .thenApply(ignored -> new CapturedChunks(
                         immutable(captured),
+                        Map.of(),
+                        strategy,
                         Duration.between(startedAt, Instant.now())));
     }
 
@@ -210,5 +231,7 @@ final class FabricBackupStorageAccess {
 
     record CapturedChunks(
             Map<BackupStorageKind, Map<ChunkCoordinate, Path>> chunks,
+            Map<String, Path> regionFiles,
+            BackupStrategy strategy,
             Duration captureDuration) {}
 }

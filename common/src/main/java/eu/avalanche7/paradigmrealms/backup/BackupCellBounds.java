@@ -11,9 +11,10 @@ public record BackupCellBounds(int minimumChunkX, int minimumChunkZ,
         if (maximumChunkX < minimumChunkX || maximumChunkZ < minimumChunkZ) {
             throw new IllegalArgumentException("invalid cell bounds");
         }
-        if (maximumChunkX - minimumChunkX + 1 != 16
-                || maximumChunkZ - minimumChunkZ + 1 != 16) {
-            throw new IllegalArgumentException("realm backup cell must be exactly 16x16 chunks");
+        int width = Math.addExact(Math.subtractExact(maximumChunkX, minimumChunkX), 1);
+        int depth = Math.addExact(Math.subtractExact(maximumChunkZ, minimumChunkZ), 1);
+        if (width > 32 || depth > 32) {
+            throw new IllegalArgumentException("realm backup cell must not exceed 32x32 chunks");
         }
     }
 
@@ -27,7 +28,7 @@ public record BackupCellBounds(int minimumChunkX, int minimumChunkZ,
     }
 
     public List<ChunkCoordinate> coordinates() {
-        ArrayList<ChunkCoordinate> result = new ArrayList<>(256);
+        ArrayList<ChunkCoordinate> result = new ArrayList<>();
         for (int x = minimumChunkX; x <= maximumChunkX; x++) {
             for (int z = minimumChunkZ; z <= maximumChunkZ; z++) {
                 result.add(new ChunkCoordinate(x, z));

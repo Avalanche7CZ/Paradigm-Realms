@@ -40,7 +40,7 @@ final class FabricBackupPackager {
     PackagedBackup packageBackup(
             FabricBackupCaptureContext context,
             FabricBackupStorageAccess.CapturedChunks captured) throws IOException {
-        BackupManifest manifest = manifest(context, captured.chunks());
+        BackupManifest manifest = manifest(context, captured);
         Path realmDirectory = paths.realmDirectory(context.realm().id().value());
         Path archive = realmDirectory.resolve(filename(context, realmDirectory, manifest.backupId()));
         BackupArchiveWriter.Result result = archiveWriter.write(
@@ -48,6 +48,7 @@ final class FabricBackupPackager {
                 manifest,
                 context.metadata(),
                 captured.chunks(),
+                captured.regionFiles(),
                 config.compression().level());
         return new PackagedBackup(manifest, result);
     }
@@ -74,12 +75,17 @@ final class FabricBackupPackager {
                 manifest.formatVersion(),
                 manifest.minecraftVersion(),
                 manifest.realmsVersion(),
-                counts);
+                counts,
+                manifest.allocationProfile(),
+                manifest.strategy(),
+                manifest.strategy() == eu.avalanche7.paradigmrealms.backup.BackupStrategy.REGION_COPY
+                        ? manifest.regionFiles().size() : manifest.totalChunkCount());
     }
 
     private BackupManifest manifest(
             FabricBackupCaptureContext context,
-            Map<BackupStorageKind, Map<ChunkCoordinate, Path>> chunks) {
+            FabricBackupStorageAccess.CapturedChunks captured) {
+        Map<BackupStorageKind, Map<ChunkCoordinate, Path>> chunks = captured.chunks();
         EnumMap<BackupStorageKind, List<ChunkCoordinate>> coordinates =
                 new EnumMap<>(BackupStorageKind.class);
         for (BackupStorageKind kind : BackupStorageKind.values()) {
@@ -104,8 +110,11 @@ final class FabricBackupPackager {
                 context.ownerName(),
                 realm.preset().value(),
                 realm.state().name(),
+                realm.allocation().profile().value(),
                 context.bounds(),
+                captured.strategy(),
                 coordinates,
+                captured.regionFiles().keySet().stream().sorted().toList(),
                 "SNAPSHOT_INCLUDED",
                 false);
     }

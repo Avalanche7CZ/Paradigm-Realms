@@ -59,9 +59,7 @@ final class FabricBackupNotifier {
             return;
         }
 
-        int records = entry.chunkCounts().values().stream()
-                .mapToInt(Integer::intValue)
-                .sum();
+        int records = entry.payloadFileCount();
         if (entry.reason() == BackupReason.AUTOMATIC) {
             sendChat(owner, RealmMessageKey.BACKUP_AUTOMATIC_COMPLETED, java.util.Map.of());
             return;

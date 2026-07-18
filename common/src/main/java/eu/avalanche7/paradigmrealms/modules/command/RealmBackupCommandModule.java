@@ -382,8 +382,9 @@ public final class RealmBackupCommandModule {
         source.sendFeedback("Integrity: " + friendlyIntegrity(entry.integrityStatus())
                 + " | reason: " + friendlyReason(entry.reason())
                 + " | pinned: " + (entry.pinned() ? "yes" : "no"));
-        source.sendFeedback("Captured storage records: " + entry.chunkCounts().values().stream()
-                .mapToInt(Integer::intValue).sum());
+        source.sendFeedback("Allocation profile: " + entry.allocationProfile()
+                + " | strategy: " + entry.strategy());
+        source.sendFeedback("Captured payload files: " + entry.payloadFileCount());
         return 1;
     }
 

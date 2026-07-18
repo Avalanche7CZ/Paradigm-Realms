@@ -29,14 +29,17 @@ public final class BackupManifestJsonCodec {
         realm.put("ownerNameSnapshot", manifest.ownerNameSnapshot());
         realm.put("preset", manifest.preset());
         realm.put("lifecycleState", manifest.lifecycleState());
+        realm.put("allocationProfile", manifest.allocationProfile());
         root.put("realm", realm);
         root.put("cellBounds", bounds(manifest.cellBounds()));
+        root.put("strategy", manifest.strategy().name());
         Map<String, Object> included = new LinkedHashMap<>();
         for (BackupStorageKind kind : BackupStorageKind.values()) {
             included.put(kind.directory(), manifest.chunks().get(kind).stream()
                     .map(coordinate -> List.of(coordinate.x(), coordinate.z())).toList());
         }
         root.put("included", included);
+        root.put("regionFiles", manifest.regionFiles());
         root.put("metadataMode", manifest.metadataMode());
         root.put("pinned", manifest.pinned());
         return Json.write(root);
@@ -45,7 +48,7 @@ public final class BackupManifestJsonCodec {
     public BackupManifest decode(String json) {
         Map<String, Object> root = object(Json.parse(json), "root");
         int version = integer(root, "formatVersion", "root");
-        if (version != BackupManifest.CURRENT_FORMAT_VERSION) {
+        if (version < 1 || version > BackupManifest.CURRENT_FORMAT_VERSION) {
             throw new IllegalArgumentException("unsupported backup format version " + version);
         }
         Map<String, Object> actor = object(required(root, "createdBy", "root"), "root.createdBy");
@@ -74,7 +77,11 @@ public final class BackupManifestJsonCodec {
                 longValue(realm, "id", "root.realm"), UUID.fromString(string(realm, "ownerUuid", "root.realm")),
                 string(realm, "ownerNameSnapshot", "root.realm"), string(realm, "preset", "root.realm"),
                 string(realm, "lifecycleState", "root.realm"),
-                decodeBounds(object(required(root, "cellBounds", "root"), "root.cellBounds")), chunks,
+                version == 1 ? "custom-v1" : string(realm, "allocationProfile", "root.realm"),
+                decodeBounds(object(required(root, "cellBounds", "root"), "root.cellBounds")),
+                version == 1 ? BackupStrategy.CHUNK_EXTRACT
+                        : BackupStrategy.valueOf(string(root, "strategy", "root")),
+                chunks, version == 1 ? List.of() : stringList(root, "regionFiles", "root"),
                 string(root, "metadataMode", "root"), bool(root, "pinned", "root"));
     }
 
@@ -121,6 +128,15 @@ public final class BackupManifestJsonCodec {
         Object raw = value.get(key); if (raw == null) return Optional.empty();
         if (!(raw instanceof String string)) throw new IllegalArgumentException(key + " must be a string");
         return Optional.of(string);
+    }
+    static List<String> stringList(Map<String, Object> value, String key, String path) {
+        List<Object> raw = list(required(value, key, path), path + '.' + key);
+        ArrayList<String> result = new ArrayList<>(raw.size());
+        for (Object item : raw) {
+            if (!(item instanceof String string)) throw new IllegalArgumentException(path + '.' + key + " must contain strings");
+            result.add(string);
+        }
+        return List.copyOf(result);
     }
     static int integer(Map<String, Object> value, String key, String path) {
         return exactInt(required(value, key, path), path + '.' + key);

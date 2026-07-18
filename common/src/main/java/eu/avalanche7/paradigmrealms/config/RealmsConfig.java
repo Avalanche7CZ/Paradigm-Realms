@@ -20,6 +20,8 @@ import eu.avalanche7.paradigmrealms.domain.realm.RealmSetting;
 import eu.avalanche7.paradigmrealms.ownership.PreviousOwnerRole;
 import eu.avalanche7.paradigmrealms.backup.BackupFilenamePolicy;
 import eu.avalanche7.paradigmrealms.backup.RealmBackupConfig;
+import eu.avalanche7.paradigmrealms.allocation.AllocationProfile;
+import eu.avalanche7.paradigmrealms.allocation.RealmAllocator;
 
 public record RealmsConfig(
         int membershipInviteExpiryMinutes,
@@ -63,6 +65,7 @@ public record RealmsConfig(
 
     public static RealmsConfig fromProperties(Properties values) {
         java.util.Objects.requireNonNull(values, "values");
+        validateAllocationDefaults(values);
         return new RealmsConfig(
                 integer(values, "membershipInviteExpiryMinutes"),
                 integer(values, "maximumMembersPerRealm"),
@@ -111,6 +114,10 @@ public record RealmsConfig(
 
     public Properties toProperties() {
         Properties values = new Properties();
+        values.setProperty("allocation.profile", AllocationProfile.REGION_ALIGNED_32_V1.value());
+        values.setProperty("allocation.cellSizeChunks", Integer.toString(RealmAllocator.CELL_SIZE_CHUNKS));
+        values.setProperty("allocation.buildableSizeChunks", Integer.toString(RealmAllocator.BUILDABLE_SIZE_CHUNKS));
+        values.setProperty("allocation.guardInsetChunks", Integer.toString(RealmAllocator.GUARD_INSET_CHUNKS));
         values.setProperty("membershipInviteExpiryMinutes", Integer.toString(membershipInviteExpiryMinutes));
         values.setProperty("maximumMembersPerRealm", Integer.toString(maximumMembersPerRealm));
         values.setProperty("maximumPendingInvitesPerRealm", Integer.toString(maximumPendingInvitesPerRealm));
@@ -235,6 +242,16 @@ public record RealmsConfig(
                 Duration.ofSeconds(longValue(values, "realmBackups.captureTimeoutSeconds")),
                 integer(values, "realmBackups.maximumRetries"),
                 Duration.ofMinutes(longValue(values, "realmBackups.schedulingSpreadMinutes")));
+    }
+
+    private static void validateAllocationDefaults(Properties values) {
+        if (!AllocationProfile.REGION_ALIGNED_32_V1.value().equals(required(values, "allocation.profile"))
+                || integer(values, "allocation.cellSizeChunks") != RealmAllocator.CELL_SIZE_CHUNKS
+                || integer(values, "allocation.buildableSizeChunks") != RealmAllocator.BUILDABLE_SIZE_CHUNKS
+                || integer(values, "allocation.guardInsetChunks") != RealmAllocator.GUARD_INSET_CHUNKS) {
+            throw new IllegalArgumentException(
+                    "allocation geometry is fixed to region-aligned-32-v1 (32 cell, 16 buildable, 8 guard)");
+        }
     }
 
     private static Set<RealmPresetId> parsePresetIds(String value) {

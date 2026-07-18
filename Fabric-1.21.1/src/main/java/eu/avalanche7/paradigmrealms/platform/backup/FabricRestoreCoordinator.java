@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.security.MessageDigest;
 
 import eu.avalanche7.paradigmrealms.ParadigmRealms;
 import eu.avalanche7.paradigmrealms.backup.BackupActor;
@@ -260,7 +261,10 @@ final class FabricRestoreCoordinator {
                 target.owner().uuid(),
                 bounds,
                 DimensionId.REALMS.toString(),
+                sourceManifest.allocationProfile(),
+                sourceManifest.strategy(),
                 worldIdentity,
+                realmStateDigest(),
                 sourceEntry.archiveRelativePath(),
                 "dimensions/paradigm_realms/realms",
                 "backups/paradigm-realms/quarantine/" + operationId,
@@ -304,6 +308,7 @@ final class FabricRestoreCoordinator {
             }
             Realm realm = realms.findById(new RealmId(operation.realmId())).orElse(null);
             if (realm == null
+                    || !realm.allocation().profile().value().equals(operation.allocationProfile())
                     || !BackupCellBounds.from(realm.allocation().cellBounds())
                             .equals(operation.targetBounds())) {
                 manifestFile.write(
@@ -395,6 +400,7 @@ final class FabricRestoreCoordinator {
         try {
             if (realm == null
                     || !realm.owner().uuid().equals(operation.expectedOwnerUuid())
+                    || !realm.allocation().profile().value().equals(operation.allocationProfile())
                     || !BackupCellBounds.from(realm.allocation().cellBounds())
                             .equals(operation.targetBounds())) {
                 throw new IOException("realm identity changed before runtime verification");
@@ -450,6 +456,9 @@ final class FabricRestoreCoordinator {
                 && realm.dimension().equals(DimensionId.REALMS)
                 && manifest.dimension().equals(DimensionId.REALMS.toString())
                 && manifest.worldIdentity().equals(worldIdentity)
+                && manifest.allocationProfile().equals(realm.allocation().profile().value())
+                && manifest.strategy() == eu.avalanche7.paradigmrealms.backup.BackupStrategySelector
+                        .select(realm.allocation())
                 && BackupCellBounds.from(realm.allocation().cellBounds())
                         .equals(manifest.cellBounds());
     }
@@ -518,6 +527,19 @@ final class FabricRestoreCoordinator {
         RealmBackupMutationLocks.Handle lock = restoreLocks.remove(realmId);
         if (lock != null) {
             lock.close();
+        }
+    }
+
+    private String realmStateDigest() {
+        Path state = paths.worldRoot().resolve("data/paradigm_realms.dat");
+        try (var input = Files.newInputStream(state)) {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) >= 0) if (read > 0) digest.update(buffer, 0, read);
+            return java.util.HexFormat.of().formatHex(digest.digest());
+        } catch (IOException | java.security.NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("could not fingerprint Realms persistent state", exception);
         }
     }
 

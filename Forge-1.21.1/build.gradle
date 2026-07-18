@@ -1,0 +1,100 @@
+plugins {
+    id 'dev.architectury.loom' version '1.13.469'
+}
+
+version = rootProject.mod_version
+group = rootProject.maven_group
+base.archivesName = 'paradigm-realms-forge-1.21.1'
+
+def resolvedModVersion = version.toString()
+def paradigmApiPath = providers.gradleProperty('paradigmApiPath')
+        .orElse('../Paradigm/common/build/libs/paradigm-api-2.2.4.jar')
+def paradigmApiFile = rootProject.file(paradigmApiPath.get())
+
+loom {
+    forge {
+        mixinConfig 'paradigm-realms.mixins.json'
+    }
+    runs {
+        server {
+            server()
+            name = 'Forge 1.21.1 Server'
+            runDir = 'run'
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.minecraftforge.net/' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    forge "net.minecraftforge:forge:${project.minecraft_version}-${project.forge_version}"
+
+    implementation project(':common')
+    compileOnly files(paradigmApiFile)
+}
+
+processResources {
+    inputs.property 'version', resolvedModVersion
+    inputs.property 'forge_version', project.forge_version
+    filesMatching('META-INF/mods.toml') {
+        expand version: resolvedModVersion, forge_version: project.forge_version
+    }
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+}
+
+tasks.named('jar', Jar) {
+    dependsOn project(':common').tasks.named('classes')
+    from(project(':common').sourceSets.main.output)
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'MixinConfigs': 'paradigm-realms.mixins.json'
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    doFirst {
+        if (!paradigmApiFile.isFile()) {
+            throw new GradleException("Paradigm Companion API jar not found at ${paradigmApiFile}. "
+                    + "Build it with '../Paradigm/gradlew :common:apiJar' or set "
+                    + "-PparadigmApiPath=/absolute/path/to/paradigm-api.jar")
+        }
+    }
+    options.encoding = 'UTF-8'
+    options.release.set(21)
+}
+
+tasks.register('wildsResetToolJar', Jar) {
+    group = 'build'
+    archiveClassifier = 'wilds-reset-tool'
+    dependsOn project(':common').tasks.named('classes')
+    from(project(':common').sourceSets.main.output)
+    manifest {
+        attributes 'Main-Class': 'eu.avalanche7.paradigmrealms.platform.wilds.offline.WildsOfflineResetTool'
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.register('realmBackupToolJar', Jar) {
+    group = 'build'
+    archiveClassifier = 'realm-backup-tool'
+    dependsOn project(':common').tasks.named('classes')
+    from(project(':common').sourceSets.main.output)
+    manifest {
+        attributes 'Main-Class': 'eu.avalanche7.paradigmrealms.backup.offline.RealmBackupRestoreTool'
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.named('build') {
+    dependsOn tasks.named('wildsResetToolJar')
+    dependsOn tasks.named('realmBackupToolJar')
+}

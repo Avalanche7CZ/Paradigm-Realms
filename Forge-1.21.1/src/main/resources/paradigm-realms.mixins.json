@@ -1,0 +1,27 @@
+{
+  "required": true,
+  "minVersion": "0.8.7",
+  "package": "eu.avalanche7.paradigmrealms.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "MinecraftServerMixin",
+    "EntityMixin",
+    "ServerWorldSeedMixin",
+    "BucketItemMixin",
+    "ExperienceOrbEntityMixin",
+    "ExplosionMixin",
+    "FarmlandBlockMixin",
+    "ItemEntityMixin",
+    "PistonBlockMixin",
+    "ScreenHandlerMixin",
+    "VersionedChunkStorageAccessor",
+    "ServerChunkLoadingManagerAccessor",
+    "SerializingRegionBasedStorageAccessor",
+    "ServerWorldAccessor",
+    "ServerEntityManagerAccessor",
+    "EntityChunkDataAccessAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

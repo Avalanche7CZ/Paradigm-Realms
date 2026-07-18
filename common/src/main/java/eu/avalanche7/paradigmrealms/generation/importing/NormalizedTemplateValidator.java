@@ -11,8 +11,8 @@ public final class NormalizedTemplateValidator {
         return validate(template, ImportPolicy.STRICT);
     }
     public StructurallyValidatedTemplate validate(NormalizedImportedTemplate template, ImportPolicy policy) {
-        if (template.width() > 160 || template.depth() > 160) {
-            throw new IllegalArgumentException("enclosing X/Z bounds exceed the 10x10-chunk realm region");
+        if (template.width() > 256 || template.depth() > 256) {
+            throw new IllegalArgumentException("enclosing X/Z bounds exceed the 16x16-chunk realm region");
         }
         if (template.height() > 318) throw new IllegalArgumentException("enclosing height exceeds the Realms build-height envelope");
         Map<Position, NormalizedImportedTemplate.NormalizedBlock> positions = new HashMap<>(); int nonAir = 0;

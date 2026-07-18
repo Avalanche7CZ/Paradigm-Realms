@@ -18,7 +18,10 @@ public final class RestoreOperationManifestJsonCodec {
         root.put("expectedOwnerUuid", manifest.expectedOwnerUuid().toString());
         root.put("targetBounds", BackupManifestJsonCodec.bounds(manifest.targetBounds()));
         root.put("dimension", manifest.dimension());
+        root.put("allocationProfile", manifest.allocationProfile());
+        root.put("strategy", manifest.strategy().name());
         root.put("worldIdentity", manifest.worldIdentity());
+        root.put("realmStateSha256", manifest.realmStateSha256());
         root.put("archiveRelativePath", manifest.archiveRelativePath());
         root.put("dimensionRelativePath", manifest.dimensionRelativePath());
         root.put("quarantineRelativePath", manifest.quarantineRelativePath());
@@ -46,7 +49,12 @@ public final class RestoreOperationManifestJsonCodec {
                 UUID.fromString(BackupManifestJsonCodec.string(root, "expectedOwnerUuid", "root")),
                 BackupManifestJsonCodec.decodeBounds(bounds),
                 BackupManifestJsonCodec.string(root, "dimension", "root"),
+                BackupManifestJsonCodec.optionalString(root, "allocationProfile").orElse("custom-v1"),
+                BackupManifestJsonCodec.optionalString(root, "strategy")
+                        .map(BackupStrategy::valueOf).orElse(BackupStrategy.CHUNK_EXTRACT),
                 BackupManifestJsonCodec.string(root, "worldIdentity", "root"),
+                BackupManifestJsonCodec.optionalString(root, "realmStateSha256").orElse(
+                        "0000000000000000000000000000000000000000000000000000000000000000"),
                 BackupManifestJsonCodec.string(root, "archiveRelativePath", "root"),
                 BackupManifestJsonCodec.string(root, "dimensionRelativePath", "root"),
                 BackupManifestJsonCodec.string(root, "quarantineRelativePath", "root"),

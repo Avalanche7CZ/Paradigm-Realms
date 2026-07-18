@@ -33,6 +33,12 @@ public final class BackupArchiveWriter {
 
     public Result write(Path destination, BackupManifest manifest, RealmMetadataSnapshot metadata,
             Map<BackupStorageKind, Map<ChunkCoordinate, Path>> chunks, int compressionLevel) throws IOException {
+        return write(destination, manifest, metadata, chunks, Map.of(), compressionLevel);
+    }
+
+    public Result write(Path destination, BackupManifest manifest, RealmMetadataSnapshot metadata,
+            Map<BackupStorageKind, Map<ChunkCoordinate, Path>> chunks,
+            Map<String, Path> regionFiles, int compressionLevel) throws IOException {
         if (Files.exists(destination) || Files.isSymbolicLink(destination)) {
             throw new IOException("backup destination already exists");
         }
@@ -51,6 +57,7 @@ public final class BackupArchiveWriter {
                 zip.setLevel(Math.max(Deflater.NO_COMPRESSION, Math.min(Deflater.BEST_COMPRESSION, compressionLevel)));
                 writeMetadataEntries(zip, manifest, metadata, checksums);
                 writeChunkEntries(zip, chunks, checksums);
+                writeRegionEntries(zip, regionFiles, checksums);
                 writeChecksumEntry(zip, checksums);
             } catch (ArchiveWriteException exception) {
                 throw (IOException) exception.getCause();
@@ -66,6 +73,18 @@ public final class BackupArchiveWriter {
             Files.deleteIfExists(temporary);
             throw exception;
         }
+    }
+
+    private static void writeRegionEntries(
+            ZipOutputStream zip, Map<String, Path> files, Map<String, String> checksums) {
+        files.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+            try {
+                writePath(zip, entry.getKey(), entry.getValue(), checksums,
+                        BackupArchiveVerifier.MAX_REGION_FILE_BYTES);
+            } catch (IOException exception) {
+                throw new ArchiveWriteException(exception);
+            }
+        });
     }
 
     private static void writeMetadataEntries(
@@ -149,6 +168,12 @@ public final class BackupArchiveWriter {
             String name,
             Path source,
             Map<String, String> checksums) throws IOException {
+        writePath(zip, name, source, checksums, BackupArchiveVerifier.MAX_CHUNK_BYTES);
+    }
+
+    private static void writePath(
+            ZipOutputStream zip, String name, Path source, Map<String, String> checksums, long limit)
+            throws IOException {
         if (Files.isSymbolicLink(source) || !Files.isRegularFile(source)) {
             throw new IOException("captured chunk file is missing or a symlink");
         }
@@ -158,7 +183,7 @@ public final class BackupArchiveWriter {
         zip.putNextEntry(entry);
         MessageDigest digest = sha256();
         try (InputStream input = Files.newInputStream(source)) {
-            copyBounded(input, zip, digest);
+            copyBounded(input, zip, digest, limit);
         }
         zip.closeEntry();
         checksums.put(name, HexFormat.of().formatHex(digest.digest()));
@@ -167,7 +192,8 @@ public final class BackupArchiveWriter {
     private static void copyBounded(
             InputStream input,
             ZipOutputStream output,
-            MessageDigest digest) throws IOException {
+            MessageDigest digest,
+            long limit) throws IOException {
         byte[] buffer = new byte[32 * 1024];
         long total = 0;
         int read;
@@ -176,8 +202,8 @@ public final class BackupArchiveWriter {
                 continue;
             }
             total += read;
-            if (total > BackupArchiveVerifier.MAX_CHUNK_BYTES) {
-                throw new IOException("captured chunk exceeds limit");
+            if (total > limit) {
+                throw new IOException("captured payload exceeds limit");
             }
             digest.update(buffer, 0, read);
             output.write(buffer, 0, read);

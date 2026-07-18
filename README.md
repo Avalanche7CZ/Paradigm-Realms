@@ -54,6 +54,31 @@ Keep it private, build together with friends, or open it for visitors.
 
 **Your realm, your rules :3**
 
+### Region-aligned allocation
+
+Every newly created realm uses the persisted allocation profile `region-aligned-32-v1`:
+
+- Allocation cell: **32×32 chunks** (**512×512 blocks**)
+- Buildable area: **16×16 chunks**, centered in the cell
+- Guard area: **8 chunks on every side**
+- Storage ownership: **one complete Minecraft Anvil region per realm**
+
+The square spiral assigns a different region coordinate to every realm, so neighboring realms never share terrain,
+entity, or POI region files. Protection, preset placement, spawn validation, and teleports use each realm's persisted
+profile and bounds.
+
+This release candidate intentionally does not migrate the former 16×16 test allocation. For a pre-release server that does not
+need its test realms, the recommended upgrade is a clean reset:
+
+```text
+stop server
+remove the Realms dimension and Realms persistent state
+start server
+create realms again
+```
+
+Paradigm Realms never performs this deletion automatically.
+
 ---
 
 ## 👥 Members and managers
@@ -323,6 +348,11 @@ Useful starting commands:
 ```
 
 Validation never silently changes authoritative data. Repair operations remain explicit and separate.
+
+Realm backups select their strategy from the persisted allocation. `region-aligned-32-v1` uses `REGION_COPY` and
+stores the realm's dedicated terrain, entity, and POI `.mca` files plus referenced external `.mcc` payloads.
+`custom-v1` allocations retain the selective `CHUNK_EXTRACT` path. Exact offline region restore quarantines and
+replaces only that realm's dedicated files while preserving every other region.
 
 ---
 

@@ -116,7 +116,11 @@ public final class BackupCatalogFile {
                     manifest.formatVersion(),
                     manifest.minecraftVersion(),
                     manifest.realmsVersion(),
-                    counts);
+                    counts,
+                    manifest.allocationProfile(),
+                    manifest.strategy(),
+                    manifest.strategy() == eu.avalanche7.paradigmrealms.backup.BackupStrategy.REGION_COPY
+                            ? manifest.regionFiles().size() : manifest.totalChunkCount());
             try {
                 catalog.put(entry);
             } catch (IllegalArgumentException duplicate) {

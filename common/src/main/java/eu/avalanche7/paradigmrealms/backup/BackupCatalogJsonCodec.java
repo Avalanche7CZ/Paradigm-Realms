@@ -11,7 +11,7 @@ import java.util.UUID;
 import eu.avalanche7.paradigmrealms.backup.json.Json;
 
 public final class BackupCatalogJsonCodec {
-    private static final int CATALOG_VERSION = 1;
+    private static final int CATALOG_VERSION = 2;
 
     public String encode(List<BackupCatalogEntry> entries) {
         Map<String, Object> root = new LinkedHashMap<>();
@@ -23,7 +23,7 @@ public final class BackupCatalogJsonCodec {
     public List<BackupCatalogEntry> decode(String source) {
         Map<String, Object> root = BackupManifestJsonCodec.object(Json.parse(source), "root");
         int version = BackupManifestJsonCodec.integer(root, "catalogVersion", "root");
-        if (version != CATALOG_VERSION) {
+        if (version < 1 || version > CATALOG_VERSION) {
             throw new IllegalArgumentException("unsupported backup catalog version " + version);
         }
 
@@ -34,7 +34,7 @@ public final class BackupCatalogJsonCodec {
         for (int index = 0; index < values.size(); index++) {
             result.add(decodeEntry(BackupManifestJsonCodec.object(
                     values.get(index),
-                    "root.entries[" + index + ']')));
+                    "root.entries[" + index + ']'), version));
         }
         return List.copyOf(result);
     }
@@ -55,6 +55,9 @@ public final class BackupCatalogJsonCodec {
         value.put("formatVersion", entry.formatVersion());
         value.put("minecraftVersion", entry.minecraftVersion());
         value.put("realmsVersion", entry.realmsVersion());
+        value.put("allocationProfile", entry.allocationProfile());
+        value.put("strategy", entry.strategy().name());
+        value.put("payloadFileCount", entry.payloadFileCount());
 
         Map<String, Object> counts = new LinkedHashMap<>();
         for (BackupStorageKind kind : BackupStorageKind.values()) {
@@ -64,7 +67,7 @@ public final class BackupCatalogJsonCodec {
         return value;
     }
 
-    private BackupCatalogEntry decodeEntry(Map<String, Object> value) {
+    private BackupCatalogEntry decodeEntry(Map<String, Object> value, int catalogVersion) {
         Map<String, Object> rawCounts = BackupManifestJsonCodec.object(
                 BackupManifestJsonCodec.required(value, "chunkCounts", "catalog entry"),
                 "catalog entry.chunkCounts");
@@ -94,6 +97,12 @@ public final class BackupCatalogJsonCodec {
                 BackupManifestJsonCodec.integer(value, "formatVersion", "catalog entry"),
                 BackupManifestJsonCodec.string(value, "minecraftVersion", "catalog entry"),
                 BackupManifestJsonCodec.string(value, "realmsVersion", "catalog entry"),
-                counts);
+                counts,
+                catalogVersion == 1 ? "custom-v1"
+                        : BackupManifestJsonCodec.string(value, "allocationProfile", "catalog entry"),
+                catalogVersion == 1 ? BackupStrategy.CHUNK_EXTRACT
+                        : BackupStrategy.valueOf(BackupManifestJsonCodec.string(value, "strategy", "catalog entry")),
+                catalogVersion == 1 ? counts.values().stream().mapToInt(Integer::intValue).sum()
+                        : BackupManifestJsonCodec.integer(value, "payloadFileCount", "catalog entry"));
     }
 }

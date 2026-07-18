@@ -11,6 +11,7 @@ import java.util.UUID;
 
 import eu.avalanche7.paradigmrealms.allocation.RealmAllocation;
 import eu.avalanche7.paradigmrealms.allocation.RealmAllocator;
+import eu.avalanche7.paradigmrealms.allocation.AllocationProfile;
 import eu.avalanche7.paradigmrealms.domain.CreationTimestamp;
 import eu.avalanche7.paradigmrealms.domain.DimensionId;
 import eu.avalanche7.paradigmrealms.domain.RealmId;
@@ -63,12 +64,14 @@ public final class RealmDtoMapper {
             }
 
             RealmAllocation storedAllocation = new RealmAllocation(
+                    new AllocationProfile(dto.allocationProfile()),
                     new CellCoordinate(dto.cellX(), dto.cellZ()),
                     new ChunkBounds(dto.cellMinChunkX(), dto.cellMinChunkZ(),
                             dto.cellMaxChunkX(), dto.cellMaxChunkZ()),
                     new ChunkBounds(dto.buildMinChunkX(), dto.buildMinChunkZ(),
                             dto.buildMaxChunkX(), dto.buildMaxChunkZ()));
-            RealmAllocation expected = allocator.preview(id);
+            RealmAllocation expected = storedAllocation.profile().equals(AllocationProfile.REGION_ALIGNED_32_V1)
+                    ? allocator.preview(id) : storedAllocation;
             if (!storedAllocation.equals(expected)) {
                 return ConversionResult.failure(ValidationIssue.error(
                         "ALLOCATION_MISMATCH", path + ".allocation",
@@ -111,6 +114,7 @@ public final class RealmDtoMapper {
         return new RealmDtoV1(
                 SchemaVersion.CURRENT.value(), realm.id().value(), realm.owner().uuid().toString(),
                 realm.state().name(), realm.dimension().toString(),
+                allocation.profile().value(),
                 allocation.cell().x(), allocation.cell().z(),
                 allocation.cellBounds().minX(), allocation.cellBounds().minZ(),
                 allocation.cellBounds().maxX(), allocation.cellBounds().maxZ(),

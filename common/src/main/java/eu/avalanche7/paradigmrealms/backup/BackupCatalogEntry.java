@@ -9,7 +9,8 @@ public record BackupCatalogEntry(BackupId backupId, long realmId, UUID ownerUuid
         String ownerNameSnapshot, Instant createdAt, BackupReason reason, long sizeBytes,
         String archiveRelativePath, BackupIntegrityStatus integrityStatus, boolean pinned,
         boolean restoreInUse, int formatVersion, String minecraftVersion, String realmsVersion,
-        Map<BackupStorageKind, Integer> chunkCounts) {
+        Map<BackupStorageKind, Integer> chunkCounts, String allocationProfile,
+        BackupStrategy strategy, int payloadFileCount) {
     public BackupCatalogEntry {
         Objects.requireNonNull(backupId, "backupId");
         if (realmId < 1 || sizeBytes < 0) {
@@ -28,7 +29,21 @@ public record BackupCatalogEntry(BackupId backupId, long realmId, UUID ownerUuid
         Objects.requireNonNull(integrityStatus, "integrityStatus");
         Objects.requireNonNull(minecraftVersion, "minecraftVersion");
         Objects.requireNonNull(realmsVersion, "realmsVersion");
+        Objects.requireNonNull(allocationProfile, "allocationProfile");
+        Objects.requireNonNull(strategy, "strategy");
+        if (payloadFileCount < 0) throw new IllegalArgumentException("payload file count cannot be negative");
         chunkCounts = Map.copyOf(chunkCounts);
+    }
+
+    public BackupCatalogEntry(BackupId backupId, long realmId, UUID ownerUuid,
+            String ownerNameSnapshot, Instant createdAt, BackupReason reason, long sizeBytes,
+            String archiveRelativePath, BackupIntegrityStatus integrityStatus, boolean pinned,
+            boolean restoreInUse, int formatVersion, String minecraftVersion, String realmsVersion,
+            Map<BackupStorageKind, Integer> chunkCounts) {
+        this(backupId, realmId, ownerUuid, ownerNameSnapshot, createdAt, reason, sizeBytes,
+                archiveRelativePath, integrityStatus, pinned, restoreInUse, formatVersion, minecraftVersion,
+                realmsVersion, chunkCounts, "custom-v1", BackupStrategy.CHUNK_EXTRACT,
+                chunkCounts.values().stream().mapToInt(Integer::intValue).sum());
     }
 
     public BackupCatalogEntry withPinned(boolean value) {
@@ -62,6 +77,9 @@ public record BackupCatalogEntry(BackupId backupId, long realmId, UUID ownerUuid
                 formatVersion,
                 minecraftVersion,
                 realmsVersion,
-                chunkCounts);
+                chunkCounts,
+                allocationProfile,
+                strategy,
+                payloadFileCount);
     }
 }

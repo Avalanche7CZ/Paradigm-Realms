@@ -10,6 +10,7 @@ public record RealmDtoV1(
         String ownerUuid,
         String state,
         String dimension,
+        String allocationProfile,
         int cellX,
         int cellZ,
         int cellMinChunkX,
@@ -51,6 +52,7 @@ public record RealmDtoV1(
         Objects.requireNonNull(ownerUuid, "ownerUuid");
         Objects.requireNonNull(state, "state");
         Objects.requireNonNull(dimension, "dimension");
+        Objects.requireNonNull(allocationProfile, "allocationProfile");
         Objects.requireNonNull(presetId, "presetId");
         Objects.requireNonNull(memberUuids, "memberUuids");
         Objects.requireNonNull(visitorUuids, "visitorUuids");
@@ -78,8 +80,24 @@ public record RealmDtoV1(
             double spawnX, double spawnY, double spawnZ, float spawnYaw, float spawnPitch, String presetId,
             List<String> memberUuids, List<String> visitorUuids, String accessPolicy, long createdAtEpochMs,
             Optional<RealmOperationDtoV1> operation, Optional<RealmFailureDtoV1> failure) {
-        this(recordSchema, id, ownerUuid, state, dimension, cellX, cellZ, cellMinChunkX, cellMinChunkZ,
+        this(recordSchema, id, ownerUuid, state, dimension, "custom-v1", cellX, cellZ, cellMinChunkX, cellMinChunkZ,
                 cellMaxChunkX, cellMaxChunkZ, buildMinChunkX, buildMinChunkZ, buildMaxChunkX, buildMaxChunkZ,
+                spawnX, spawnY, spawnZ, spawnYaw, spawnPitch, presetId, memberUuids, visitorUuids, accessPolicy,
+                createdAtEpochMs, operation, failure, "Realm #" + id, "", false, List.of(), List.of(), false,
+                false, false, false, false, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+    }
+
+    public RealmDtoV1(
+            int recordSchema, long id, String ownerUuid, String state, String dimension,
+            String allocationProfile,
+            int cellX, int cellZ, int cellMinChunkX, int cellMinChunkZ, int cellMaxChunkX, int cellMaxChunkZ,
+            int buildMinChunkX, int buildMinChunkZ, int buildMaxChunkX, int buildMaxChunkZ,
+            double spawnX, double spawnY, double spawnZ, float spawnYaw, float spawnPitch, String presetId,
+            List<String> memberUuids, List<String> visitorUuids, String accessPolicy, long createdAtEpochMs,
+            Optional<RealmOperationDtoV1> operation, Optional<RealmFailureDtoV1> failure) {
+        this(recordSchema, id, ownerUuid, state, dimension, allocationProfile, cellX, cellZ,
+                cellMinChunkX, cellMinChunkZ, cellMaxChunkX, cellMaxChunkZ,
+                buildMinChunkX, buildMinChunkZ, buildMaxChunkX, buildMaxChunkZ,
                 spawnX, spawnY, spawnZ, spawnYaw, spawnPitch, presetId, memberUuids, visitorUuids, accessPolicy,
                 createdAtEpochMs, operation, failure, "Realm #" + id, "", false, List.of(), List.of(), false,
                 false, false, false, false, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
