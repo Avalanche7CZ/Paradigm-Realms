@@ -1,0 +1,35 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="CC-BY-NC-ND-4.0"
+
+[[mods]]
+modId="paradigm_realms"
+version="${version}"
+displayName="Paradigm Realms"
+authors="Avalanche7CZ"
+displayTest="IGNORE_SERVER_VERSION"
+description='''Server-side protected personal realms and a safely resettable shared exploration world.'''
+
+[[mixins]]
+config="paradigm-realms.mixins.json"
+
+[[dependencies.paradigm_realms]]
+modId="neoforge"
+type="required"
+versionRange="[21.1,)"
+ordering="NONE"
+side="SERVER"
+
+[[dependencies.paradigm_realms]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1,1.21.2)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.paradigm_realms]]
+modId="paradigm"
+type="optional"
+versionRange="[2.2.4,)"
+ordering="AFTER"
+side="SERVER"

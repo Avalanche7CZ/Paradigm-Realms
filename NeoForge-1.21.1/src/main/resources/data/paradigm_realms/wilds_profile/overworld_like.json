@@ -1,0 +1,6 @@
+{
+  "dimension": "paradigm_realms:wilds",
+  "generator": "minecraft:noise",
+  "noiseSettings": "minecraft:overworld",
+  "description": "Universal Overworld-like exploration generation"
+}
