@@ -10,72 +10,77 @@ public final class PlayerMessageMappings {
     private PlayerMessageMappings() {}
 
     public static String membershipFailure(MembershipStatus status) {
-        return switch (status) {
-            case NO_REALM -> "No matching realm was found.";
-            case REALM_NOT_ACTIVE -> "That realm is not active right now.";
-            case NOT_OWNER -> "Only the realm owner can do that.";
-            case OWNER_CANNOT_BE_TARGET -> "The realm owner cannot be selected for that action.";
-            case ALREADY_MEMBER -> "That player already belongs to the realm.";
-            case NOT_MEMBER -> "That player is not a member of the realm.";
-            case INVITATION_NOT_FOUND -> "That realm invitation no longer exists.";
-            case INVITATION_EXPIRED -> "That realm invitation has expired.";
-            case MAXIMUM_MEMBERS -> "This realm has reached its member limit.";
-            case MAXIMUM_PENDING_INVITATIONS -> "This realm has too many pending invitations.";
-            case BANNED -> "That player is banned from the realm.";
-            case FORBIDDEN_TARGET -> "You cannot manage that player from your current role.";
-            case OPERATION_IN_PROGRESS -> "This realm is busy with another operation.";
-            case NO_CHANGE -> "Nothing needed to change.";
-            default -> "The realm membership change could not be completed.";
+        String key = switch (status) {
+            case NO_REALM -> "no_realm";
+            case REALM_NOT_ACTIVE -> "realm_not_active";
+            case NOT_OWNER -> "not_owner";
+            case OWNER_CANNOT_BE_TARGET -> "owner_target";
+            case ALREADY_MEMBER -> "already_member";
+            case NOT_MEMBER -> "not_member";
+            case INVITATION_NOT_FOUND -> "invitation_not_found";
+            case INVITATION_EXPIRED -> "invitation_expired";
+            case MAXIMUM_MEMBERS -> "maximum_members";
+            case MAXIMUM_PENDING_INVITATIONS -> "maximum_invitations";
+            case BANNED -> "banned";
+            case FORBIDDEN_TARGET -> "forbidden_target";
+            case OPERATION_IN_PROGRESS -> "operation_in_progress";
+            case NO_CHANGE -> "no_change";
+            default -> "generic";
         };
+        return PlayerMessages.text("errors.membership." + key);
     }
 
     public static String ownerMutationFailure(RealmOwnerManagementService.Status status) {
-        return switch (status) {
-            case NO_REALM -> "You do not own or manage a realm.";
-            case FORBIDDEN -> "Your realm role does not allow that change.";
-            case INVALID_TARGET -> "That player cannot be selected for this change.";
-            case NOT_FOUND -> "The requested realm entry was not found.";
-            case SERVER_LOCKED -> "That realm setting is locked by the server.";
-            case OPERATION_IN_PROGRESS -> "This realm is busy with another operation.";
-            case CHANGED -> "Realm updated.";
+        String key = switch (status) {
+            case NO_REALM -> "no_realm";
+            case FORBIDDEN -> "forbidden";
+            case INVALID_TARGET -> "invalid_target";
+            case NOT_FOUND -> "not_found";
+            case SERVER_LOCKED -> "server_locked";
+            case OPERATION_IN_PROGRESS -> "operation_in_progress";
+            case CHANGED -> "changed";
         };
+        return PlayerMessages.text("errors.owner_mutation." + key);
     }
 
     public static String transferFailure(RealmOwnershipTransferService.Status status) {
-        return switch (status) {
-            case NO_REALM -> "You do not have an active realm to transfer.";
-            case NOT_FOUND -> "That ownership transfer offer no longer exists.";
-            case INVALID_TARGET -> "That player cannot receive this realm.";
-            case TARGET_ALREADY_OWNS_REALM -> "That player already owns an active realm.";
-            case TARGET_BANNED -> "Unban that player before transferring the realm.";
-            case LIFECYCLE_CONFLICT -> "The realm is busy with another operation.";
-            case TRANSFER_CONFLICT -> "Another ownership transfer is already pending.";
-            default -> "The ownership transfer could not be completed.";
+        String key = switch (status) {
+            case NO_REALM -> "no_realm";
+            case NOT_FOUND -> "not_found";
+            case INVALID_TARGET -> "invalid_target";
+            case TARGET_ALREADY_OWNS_REALM -> "target_owns_realm";
+            case TARGET_BANNED -> "target_banned";
+            case LIFECYCLE_CONFLICT -> "lifecycle_conflict";
+            case TRANSFER_CONFLICT -> "transfer_conflict";
+            default -> "generic";
         };
+        return PlayerMessages.text("errors.transfer." + key);
     }
 
     public static String teleportFailure(TeleportResult result) {
-        return switch (result) {
-            case REALM_NOT_ACTIVE -> "That realm is not active right now.";
-            case WORLD_UNAVAILABLE -> "The destination world is unavailable right now.";
-            case OUTSIDE_BOUNDS -> "The saved destination is outside the realm boundary.";
-            case OUTSIDE_WORLD_BORDER -> "The saved destination is outside the world border.";
-            case UNSAFE_DESTINATION -> "The destination is not safe right now.";
-            case RIDING_OR_HAS_PASSENGERS -> "Dismount before teleporting.";
-            case SUCCESS -> "Teleport completed.";
+        String key = switch (result) {
+            case REALM_NOT_ACTIVE -> "realm_not_active";
+            case WORLD_UNAVAILABLE -> "world_unavailable";
+            case OUTSIDE_BOUNDS -> "outside_bounds";
+            case OUTSIDE_WORLD_BORDER -> "outside_border";
+            case UNSAFE_DESTINATION -> "unsafe";
+            case RIDING_OR_HAS_PASSENGERS -> "riding";
+            case SUCCESS -> "success";
         };
+        return PlayerMessages.text("errors.teleport." + key);
     }
 
     public static String protectionDenial(ProtectionReason reason) {
-        return switch (reason) {
-            case GUARD_REGION -> "The guard area between realms cannot be changed.";
-            case UNALLOCATED_REALMS_SPACE -> "This space is not part of an active realm.";
-            case NOT_A_MEMBER -> "You do not have permission to change this realm.";
-            case PRIVATE_REALM -> "This realm is private.";
-            case VISITOR_READ_ONLY -> "Visitors cannot change that here.";
-            case REALM_NOT_ACTIVE -> "This realm is temporarily unavailable.";
-            case ENVIRONMENTAL_BOUNDARY -> "That action would cross a realm boundary.";
-            default -> "That action is protected in this realm.";
+        String key = switch (reason) {
+            case GUARD_REGION -> "guard_region";
+            case UNALLOCATED_REALMS_SPACE -> "unallocated";
+            case NOT_A_MEMBER -> "not_member";
+            case PRIVATE_REALM -> "private";
+            case VISITOR_READ_ONLY -> "visitor_read_only";
+            case REALM_NOT_ACTIVE -> "realm_not_active";
+            case ENVIRONMENTAL_BOUNDARY -> "boundary";
+            default -> "generic";
         };
+        return PlayerMessages.text("errors.protection." + key);
     }
 }

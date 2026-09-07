@@ -14,6 +14,7 @@ import eu.avalanche7.paradigmrealms.platform.integration.OptionalIntegrationBoot
 import eu.avalanche7.paradigmrealms.platform.message.MessageRouter;
 import eu.avalanche7.paradigmrealms.platform.permission.NeoForgePermissionGate;
 import eu.avalanche7.paradigmrealms.platform.protection.NeoForgeProtectionEvents;
+import eu.avalanche7.paradigmrealms.message.LanguageCatalog;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -37,7 +38,7 @@ public final class ParadigmRealms {
     private final RealmsConfig config;
     private final NeoForgePresetCatalogManager presets;
     private final NeoForgePermissionGate permissions = new NeoForgePermissionGate();
-    private final MessageRouter messages = new MessageRouter();
+    private final MessageRouter messages;
     private volatile NeoForgeRealmRuntime runtime;
     private AutoCloseable optionalIntegration = () -> {};
     private int presenceTicks;
@@ -45,6 +46,10 @@ public final class ParadigmRealms {
     public ParadigmRealms() {
         logStartupBanner();
         config = RealmsConfigLoader.load();
+        LanguageCatalog language = LanguageCatalog.load(
+                NeoForgeLoaderServices.getInstance().getConfigDir().resolve("paradigm-realms/lang"),
+                config.language(), LOGGER::info, LOGGER::warn);
+        messages = new MessageRouter(language);
         presets = new NeoForgePresetCatalogManager(config);
         NeoForge.EVENT_BUS.register(this);
         LOGGER.info("Paradigm Realms NeoForge server adapter initialized");

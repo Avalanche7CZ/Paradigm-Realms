@@ -24,6 +24,7 @@ import eu.avalanche7.paradigmrealms.allocation.AllocationProfile;
 import eu.avalanche7.paradigmrealms.allocation.RealmAllocator;
 
 public record RealmsConfig(
+        String language,
         int membershipInviteExpiryMinutes,
         int maximumMembersPerRealm,
         int maximumPendingInvitesPerRealm,
@@ -39,13 +40,17 @@ public record RealmsConfig(
         WildsConfig wilds,
         RealmBackupConfig realmBackups) {
 
-    public static final RealmsConfig DEFAULTS = new RealmsConfig(1440, 16, 16, 15, PreviousOwnerRole.MANAGER, 30, 5, 1500,
+    public static final RealmsConfig DEFAULTS = new RealmsConfig("en", 1440, 16, 16, 15, PreviousOwnerRole.MANAGER, 30, 5, 1500,
             new PresetSelectionConfig(BuiltinPresetDefinitions.STARTER_ISLAND_ID, false,
                     Set.of(BuiltinPresetDefinitions.STARTER_ISLAND_ID)), true, ImportPolicy.SANITIZE,
             RealmSettingsPolicy.secureDefaults(),
             defaultWilds(), RealmBackupConfig.DEFAULTS);
 
     public RealmsConfig {
+        java.util.Objects.requireNonNull(language, "language");
+        if (!language.matches("[a-zA-Z]{2}(?:_[a-zA-Z]{2})?")) {
+            throw new IllegalArgumentException("language must be a two-letter code or language_country code");
+        }
         range(membershipInviteExpiryMinutes, 1, 43_200, "membershipInviteExpiryMinutes");
         range(maximumMembersPerRealm, 1, 1_000, "maximumMembersPerRealm");
         range(maximumPendingInvitesPerRealm, 1, 1_000, "maximumPendingInvitesPerRealm");
@@ -67,6 +72,7 @@ public record RealmsConfig(
         java.util.Objects.requireNonNull(values, "values");
         validateAllocationDefaults(values);
         return new RealmsConfig(
+                required(values, "language").trim().toLowerCase(Locale.ROOT),
                 integer(values, "membershipInviteExpiryMinutes"),
                 integer(values, "maximumMembersPerRealm"),
                 integer(values, "maximumPendingInvitesPerRealm"),
@@ -114,6 +120,7 @@ public record RealmsConfig(
 
     public Properties toProperties() {
         Properties values = new Properties();
+        values.setProperty("language", language);
         values.setProperty("allocation.profile", AllocationProfile.REGION_ALIGNED_32_V1.value());
         values.setProperty("allocation.cellSizeChunks", Integer.toString(RealmAllocator.CELL_SIZE_CHUNKS));
         values.setProperty("allocation.buildableSizeChunks", Integer.toString(RealmAllocator.BUILDABLE_SIZE_CHUNKS));

@@ -1,6 +1,7 @@
 package eu.avalanche7.paradigmrealms.modules.command;
 
 import java.util.List;
+import java.util.Map;
 
 import eu.avalanche7.paradigmrealms.platform.PlatformMetadata;
 import eu.avalanche7.paradigmrealms.platform.RealmsPlatformAdapter;
@@ -17,15 +18,15 @@ public final class RealmsHelpCommandModule {
     private static final int GOLD = 0xFBBF24;
     private static final int LINE = 0x475569;
     private static final List<Section> SECTIONS = List.of(
-            new Section("Getting started", "/realm create [preset]", "Create your personal realm"),
-            new Section("Home & identity", "/realm home | info | name | description", "Return home and shape its identity"),
-            new Section("Community", "/realm public | listing | visit", "Browse and visit opt-in public realms"),
-            new Section("Members & roles", "/realm invite | members | role | managers", "Invite trusted players and managers"),
-            new Section("Moderation", "/realm kick | ban | unban | bans", "Control who may enter your realm"),
-            new Section("Protection", "/realm settings | setting", "Manage focused realm safety settings"),
-            new Section("Lifecycle", "/realm reset | delete", "Safely recreate or archive your realm"),
-            new Section("Wilds", "/wilds info | spawn | rtp", "Explore the shared resettable world"),
-            new Section("Administration", "/realms admin", "Inspect presets, archives and recovery operations"));
+            new Section("getting_started", "/realm create [preset]"),
+            new Section("home_identity", "/realm home | info | name | description"),
+            new Section("community", "/realm public | listing | visit"),
+            new Section("members_roles", "/realm invite | members | role | managers"),
+            new Section("moderation", "/realm kick | ban | unban | bans"),
+            new Section("protection", "/realm settings | setting"),
+            new Section("lifecycle", "/realm reset | delete"),
+            new Section("wilds", "/wilds info | spawn | rtp"),
+            new Section("administration", "/realms admin"));
 
     private RealmsHelpCommandModule() {}
 
@@ -49,80 +50,108 @@ public final class RealmsHelpCommandModule {
     }
 
     private static int realmHelp(CommandSource source) {
-        return focused(source, "REALM HELP", List.of(
+        return focused(source, "help.focused.realm", List.of(
                 "/realm create [preset]", "/realm home | leave | who", "/realm public | visit",
                 "/realm invite | members | role", "/realm settings", "/realm reset | delete | transfer"));
     }
 
     private static int wildsHelp(CommandSource source) {
-        return focused(source, "WILDS HELP", List.of(
+        return focused(source, "help.focused.wilds", List.of(
                 "/wilds", "/wilds info", "/wilds spawn", "/wilds rtp"));
     }
 
     private static int adminHelp(CommandSource source) {
-        return focused(source, "REALMS ADMIN", List.of(
+        return focused(source, "help.focused.admin", List.of(
                 "/realms admin validate", "/realms admin realm archives",
                 "/realms admin realm operation", "/realms admin wilds", "/realms admin validate"));
     }
 
-    private static int focused(CommandSource source, String title, List<String> commands) {
-        source.sendFeedback(new CommandText(List.of(CommandText.Part.styled(title, PURPLE, true))), false);
+    private static int focused(CommandSource source, String titleKey, List<String> commands) {
+        source.sendFeedback(new CommandText(List.of(CommandText.Part.styled(
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text(titleKey), PURPLE, true))), false);
         commands.forEach(command -> source.sendFeedback(new CommandText(List.of(
                 CommandText.Part.styledInteractive(command, CYAN, true, false,
-                        CommandText.ClickAction.SUGGEST_COMMAND, command + " ", "Prepare " + command))), false));
+                        CommandText.ClickAction.SUGGEST_COMMAND, command + " ",
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                                "help.prepare", Map.of("command", command))))), false));
         return 1;
     }
 
     private static int version(CommandSource source, PlatformMetadata metadata) {
-        source.sendFeedback("Paradigm Realms " + metadata.modVersion());
-        source.sendFeedback("Minecraft " + metadata.minecraftVersion() + " | "
-                + metadata.loaderName() + " " + metadata.loaderVersion());
-        source.sendFeedback("Common schema " + SchemaVersion.CURRENT.value()
-                + " | Wilds reset tool compatibility " + metadata.resetToolCompatibilityVersion());
-        source.sendFeedback("Optional Paradigm integration: " + metadata.optionalIntegrationState());
+        source.sendFeedbackKey("help.version.mod", Map.of("version", metadata.modVersion()));
+        source.sendFeedbackKey("help.version.platform", Map.of(
+                "minecraft", metadata.minecraftVersion(), "loader", metadata.loaderName(),
+                "loader_version", metadata.loaderVersion()));
+        source.sendFeedbackKey("help.version.schema", Map.of(
+                "schema", Integer.toString(SchemaVersion.CURRENT.value()),
+                "reset_tool", metadata.resetToolCompatibilityVersion()));
+        source.sendFeedbackKey("help.version.integration", Map.of("state", metadata.optionalIntegrationState()));
         return 1;
     }
 
     private static int show(CommandSource source, PlatformMetadata metadata) {
         source.sendFeedback(new CommandText(List.of(CommandText.Part.separator(
-                "────────────────────────────────────────", LINE))), false);
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("help.separator"), LINE))), false);
         source.sendFeedback(new CommandText(List.of(
-                CommandText.Part.styled("PARADIGM ", CYAN, true),
-                CommandText.Part.styled("REALMS", PURPLE, true),
-                CommandText.Part.styled("  v" + metadata.modVersion(), MUTED, false))), false);
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.brand_first"), CYAN, true),
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.brand_second"), PURPLE, true),
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.version_suffix", Map.of("version", metadata.modVersion())), MUTED, false))), false);
         source.sendFeedback(new CommandText(List.of(
-                CommandText.Part.styled("by ", PINK, false),
-                CommandText.Part.styled("Avalanche7CZ", WHITE, true),
-                CommandText.Part.styled("  ♥", PINK, false))), false);
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.by"), PINK, false),
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.author"), WHITE, true),
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.heart"), PINK, false))), false);
         source.sendFeedback(new CommandText(List.of(
-                CommandText.Part.styled("Minecraft " + metadata.minecraftVersion(), MUTED, false),
-                CommandText.Part.styled("  •  " + metadata.loaderName() + " " + metadata.loaderVersion(), MUTED, false))), false);
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.minecraft", Map.of("version", metadata.minecraftVersion())), MUTED, false),
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.loader", Map.of("loader", metadata.loaderName(),
+                                "version", metadata.loaderVersion())), MUTED, false))), false);
         source.sendFeedback(new CommandText(List.of(CommandText.Part.separator(
-                "────────────────────────────────────────", LINE))), false);
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("help.separator"), LINE))), false);
         for (Section section : SECTIONS) {
             source.sendFeedback(new CommandText(List.of(
-                    CommandText.Part.styled("◆ ", PINK, true),
-                    CommandText.Part.styled(section.title(), WHITE, true),
-                    CommandText.Part.styled(" — " + section.summary() + " ", MUTED, false),
-                    CommandText.Part.styledInteractive("[open]", CYAN, true, false,
+                    CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                            "help.bullet"), PINK, true),
+                    CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                            "help.sections." + section.key() + ".title"), WHITE, true),
+                    CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                            "help.section_summary", Map.of("summary",
+                                    eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                                            "help.sections." + section.key() + ".summary"))), MUTED, false),
+                    CommandText.Part.styledInteractive(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                            "help.open_button"), CYAN, true, false,
                             CommandText.ClickAction.SUGGEST_COMMAND, section.command() + " ",
-                            "Click to prepare " + section.command()))), false);
+                            eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                                    "help.click_prepare", Map.of("command", section.command()))))), false);
         }
         source.sendFeedback(new CommandText(List.of(CommandText.Part.separator(
-                "────────────────────────────────────────", LINE))), false);
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("help.separator"), LINE))), false);
         source.sendFeedback(new CommandText(List.of(
-                CommandText.Part.styled("Tip: ", GOLD, true),
-                CommandText.Part.styled("click ", WHITE, false),
-                CommandText.Part.styledInteractive("[open]", CYAN, true, false,
-                        CommandText.ClickAction.SUGGEST_COMMAND, "/realm ", "Start typing a realm command"),
-                CommandText.Part.styled(" or use tab completion.", WHITE, false))), false);
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.tip"), GOLD, true),
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.click"), WHITE, false),
+                CommandText.Part.styledInteractive(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.open_button"), CYAN, true, false,
+                        CommandText.ClickAction.SUGGEST_COMMAND, "/realm ",
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text("help.start_typing")),
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.tab_completion"), WHITE, false))), false);
         source.sendFeedback(new CommandText(List.of(
-                CommandText.Part.styled("Paradigm Realms", PURPLE, true),
-                CommandText.Part.styled(" — your world, safely isolated", MUTED, false))), false);
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.brand"), PURPLE, true),
+                CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "help.tagline"), MUTED, false))), false);
         source.sendFeedback(new CommandText(List.of(CommandText.Part.separator(
-                "────────────────────────────────────────", LINE))), false);
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("help.separator"), LINE))), false);
         return 1;
     }
 
-    private record Section(String title, String command, String summary) {}
+    private record Section(String key, String command) {}
 }

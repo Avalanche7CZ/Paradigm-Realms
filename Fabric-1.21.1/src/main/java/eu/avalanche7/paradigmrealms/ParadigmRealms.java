@@ -23,6 +23,7 @@ import eu.avalanche7.paradigmrealms.platform.protection.FabricProtectionEvents;
 import eu.avalanche7.paradigmrealms.config.RealmsConfig;
 import eu.avalanche7.paradigmrealms.platform.config.RealmsConfigLoader;
 import eu.avalanche7.paradigmrealms.platform.generation.FabricPresetCatalogManager;
+import eu.avalanche7.paradigmrealms.message.LanguageCatalog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,11 +38,14 @@ public final class ParadigmRealms implements DedicatedServerModInitializer {
     public void onInitializeServer() {
         logStartupBanner();
         RealmsConfig config = RealmsConfigLoader.load();
+        LanguageCatalog language = LanguageCatalog.load(
+                FabricLoader.getInstance().getConfigDir().resolve("paradigm-realms/lang"),
+                config.language(), LOGGER::info, LOGGER::warn);
         FabricPresetCatalogManager presets = new FabricPresetCatalogManager(config);
         ResourceManagerHelper.get(ResourceType.SERVER_DATA)
                 .registerReloadListener(new FabricPresetCatalogManager.ReloadListener(presets));
         FabricPermissionGate permissions = new FabricPermissionGate();
-        MessageRouter messages = new MessageRouter();
+        MessageRouter messages = new MessageRouter(language);
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             FabricRealmsPlatformAdapter platform = new FabricRealmsPlatformAdapter(
                     dispatcher, permissions, messages);

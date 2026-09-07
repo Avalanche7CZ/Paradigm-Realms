@@ -27,7 +27,7 @@ public record BackupRequestResult(
                 Optional.of(backupId),
                 position,
                 Optional.empty(),
-                "Your realm backup has been queued.",
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("backup_results.queued"),
                 Optional.empty());
     }
 

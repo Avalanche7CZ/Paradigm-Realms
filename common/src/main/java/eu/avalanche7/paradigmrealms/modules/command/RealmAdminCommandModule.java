@@ -97,31 +97,33 @@ public final class RealmAdminCommandModule {
 
     private static int repairPreview(
             CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier) {
-        requireRuntime(source, supplier).repairPreview().forEach(source::sendFeedback);
+        requireRuntime(source, supplier).repairPreview().forEach(value ->
+                source.sendFeedbackKey("common.detail", Map.of("detail", value)));
         return 1;
     }
 
     private static int repairIndexes(
             CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier) {
         if (!requireRuntime(source, supplier).repairIndexes()) {
-            source.sendError("Index repair refused because authoritative state is invalid.");
+            source.sendErrorKey("commands.admin.errors.index_repair_refused");
             return 0;
         }
-        source.sendFeedback("Derived indexes rebuilt from validated authoritative records.");
+        source.sendFeedbackKey("commands.admin.indexes_rebuilt");
         return 1;
     }
 
     private static int repairStaleSessions(
             CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier) {
         int removed = requireRuntime(source, supplier).repairStaleSessions();
-        source.sendFeedback("Removed " + removed + " stale session entries.");
+        source.sendFeedbackKey("commands.admin.stale_sessions_removed", Map.of("count", Integer.toString(removed)));
         return 1;
     }
 
     private static int repairExpiredOperations(
             CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier) {
         int removed = requireRuntime(source, supplier).repairExpiredOperations();
-        source.sendFeedback("Removed " + removed + " expired operation records.");
+        source.sendFeedbackKey("commands.admin.expired_operations_removed",
+                Map.of("count", Integer.toString(removed)));
         return 1;
     }
 
@@ -129,10 +131,10 @@ public final class RealmAdminCommandModule {
             CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier) {
         var result = requireRuntime(source, supplier).exportSupportBundle();
         if (result.isEmpty()) {
-            source.sendError("Support export failed. See the server log for the bounded failure reason.");
+            source.sendErrorKey("commands.admin.errors.support_export_failed");
             return 0;
         }
-        source.sendFeedback("Support bundle created at " + result.orElseThrow());
+        source.sendFeedbackKey("commands.admin.support_exported", Map.of("path", result.orElseThrow().toString()));
         return 1;
     }
 
@@ -140,10 +142,14 @@ public final class RealmAdminCommandModule {
             CommandSource source, Supplier<? extends RealmAdminCommandRuntime> supplier, boolean reload) {
         var result = reload ? requireRuntime(source, supplier).reloadConfig()
                 : requireRuntime(source, supplier).validateConfig();
-        result.applied().forEach(value -> source.sendFeedback("Applied: " + value));
-        result.deferred().forEach(value -> source.sendFeedback("Deferred: " + value));
-        result.restartRequired().forEach(value -> source.sendFeedback("Restart required: " + value));
-        result.rejected().forEach(value -> source.sendError("Rejected: " + value));
+        result.applied().forEach(value -> source.sendFeedbackKey("commands.admin.config.applied",
+                Map.of("value", value)));
+        result.deferred().forEach(value -> source.sendFeedbackKey("commands.admin.config.deferred",
+                Map.of("value", value)));
+        result.restartRequired().forEach(value -> source.sendFeedbackKey("commands.admin.config.restart",
+                Map.of("value", value)));
+        result.rejected().forEach(value -> source.sendErrorKey("commands.admin.config.rejected",
+                Map.of("value", value)));
         return result.valid() ? 1 : 0;
     }
 
@@ -198,10 +204,14 @@ public final class RealmAdminCommandModule {
                 .filter(realm -> realm.state()
                         == eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState.ARCHIVED)
                 .toList();
-        feedback(source, messages, "Archived realms: " + archives.size());
-        archives.forEach(realm -> feedback(source, messages, summary(realm)
-                + " archivedAt=" + realm.archivedAt().map(Object::toString).orElse("unknown")
-                + " replacedBy=" + realm.replacedBy().map(Object::toString).orElse("none")));
+        localizedFeedback(source, messages, "commands.admin.archives.title",
+                Map.of("count", Integer.toString(archives.size())));
+        archives.forEach(realm -> localizedFeedback(source, messages, "commands.admin.archives.line", Map.of(
+                "summary", summary(realm),
+                "archived_at", realm.archivedAt().map(Object::toString).orElseGet(() ->
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.unknown")),
+                "replaced_by", realm.replacedBy().map(Object::toString).orElseGet(() ->
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.none")))));
         return 1;
     }
 
@@ -213,15 +223,18 @@ public final class RealmAdminCommandModule {
         Realm realm = runtime.inspectRealm(new RealmId(id)).orElse(null);
         if (realm == null || realm.state()
                 != eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState.ARCHIVED) {
-            source.sendError("That realm is not archived.");
+            source.sendErrorKey("commands.admin.errors.not_archived");
             return 0;
         }
         feedback(source, messages, summary(realm));
-        feedback(source, messages, "allocationProfile=" + realm.allocation().profile()
-                + " allocation=" + realm.allocation().cell()
-                + " archivedAt=" + realm.archivedAt().orElseThrow()
-                + " replacementOf=" + realm.replacementOf().map(Object::toString).orElse("none")
-                + " replacedBy=" + realm.replacedBy().map(Object::toString).orElse("none"));
+        localizedFeedback(source, messages, "commands.admin.archives.info", Map.of(
+                "profile", realm.allocation().profile().toString(),
+                "allocation", realm.allocation().cell().toString(),
+                "archived_at", realm.archivedAt().orElseThrow().toString(),
+                "replacement_of", realm.replacementOf().map(Object::toString).orElseGet(() ->
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.none")),
+                "replaced_by", realm.replacedBy().map(Object::toString).orElseGet(() ->
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.none"))));
         return 1;
     }
 
@@ -232,10 +245,11 @@ public final class RealmAdminCommandModule {
         var result = runtime.restoreArchive(new RealmId(id));
         if (result.status()
                 != eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.RESTORED) {
-            source.sendError("Archive restore rejected: " + result.status());
+            source.sendErrorKey("commands.admin.errors.archive_restore_rejected",
+                    Map.of("status", result.status().name()));
             return 0;
         }
-        source.sendFeedback("Archived realm " + id + " restored without changing its allocation.");
+        source.sendFeedbackKey("commands.admin.archive_restored", Map.of("realm_id", Long.toString(id)));
         return 1;
     }
 
@@ -245,15 +259,17 @@ public final class RealmAdminCommandModule {
         if (runtime == null) return 0;
         Realm realm = runtime.inspectRealm(new RealmId(id)).orElse(null);
         if (realm == null || realm.lifecycleOperation().isEmpty()) {
-            source.sendError("No lifecycle operation exists for that realm.");
+            source.sendErrorKey("commands.admin.errors.no_lifecycle_operation");
             return 0;
         }
         var operation = realm.lifecycleOperation().orElseThrow();
-        source.sendFeedback("operation=" + operation.operationId() + " kind=" + operation.kind()
-                + " stage=" + operation.stage()
-                + " target=" + operation.targetRealmId().map(Object::toString).orElse("none"));
-        operation.failureCode().ifPresent(code -> source.sendFeedback(
-                "failure=" + code + ": " + operation.failureDetail().orElse("")));
+        source.sendFeedbackKey("commands.admin.operation.info", Map.of(
+                "operation", operation.operationId().toString(), "kind", operation.kind().name(),
+                "stage", operation.stage().name(),
+                "target", operation.targetRealmId().map(Object::toString).orElseGet(() ->
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.none"))));
+        operation.failureCode().ifPresent(code -> source.sendFeedbackKey("commands.admin.operation.failure",
+                Map.of("code", code, "detail", operation.failureDetail().orElse(""))));
         return 1;
     }
 
@@ -266,10 +282,11 @@ public final class RealmAdminCommandModule {
                 == eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.RESET_FAILED_OLD_REALM_PRESERVED
                 || result.status()
                 == eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.NO_REALM) {
-            source.sendError("Lifecycle retry failed: " + result.status());
+            source.sendErrorKey("commands.admin.errors.lifecycle_retry_failed",
+                    Map.of("status", result.status().name()));
             return 0;
         }
-        source.sendFeedback("Lifecycle retry result: " + result.status());
+        source.sendFeedbackKey("commands.admin.lifecycle_retry_result", Map.of("status", result.status().name()));
         return 1;
     }
 
@@ -340,7 +357,8 @@ public final class RealmAdminCommandModule {
         RealmAdminCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         if (runtime == null) return 0;
         var realms = runtime.inspectRealms();
-        feedback(source, messages, "Realms: " + realms.size());
+        localizedFeedback(source, messages, "commands.admin.realms_title",
+                Map.of("count", Integer.toString(realms.size())));
         realms.forEach(realm -> feedback(source, messages, summary(realm)));
         return realms.size();
     }
@@ -352,21 +370,21 @@ public final class RealmAdminCommandModule {
         if (runtime == null) return 0;
         return runtime.inspectRealm(new RealmId(id)).map(realm -> {
             feedback(source, messages, summary(realm));
-            feedback(source, messages, "dimension=" + realm.dimension()
-                    + " allocationProfile=" + realm.allocation().profile()
-                    + " cell=" + realm.allocation().cell()
-                    + " cellBounds=" + realm.allocation().cellBounds()
-                    + " buildable=" + realm.allocation().buildableBounds());
-            feedback(source, messages, "spawn=" + realm.spawn()
-                    + " preset=" + realm.preset()
-                    + " members=" + realm.members().size()
-                    + " visitors=" + realm.invitedVisitors().size()
-                    + " policy=" + realm.accessPolicy()
-                    + " createdAt=" + realm.createdAt());
-            realm.failure().ifPresent(failure -> feedback(source, messages, "failure=" + failure));
+            localizedFeedback(source, messages, "commands.admin.realm.allocation", Map.of(
+                    "dimension", realm.dimension().toString(), "profile", realm.allocation().profile().toString(),
+                    "cell", realm.allocation().cell().toString(),
+                    "cell_bounds", realm.allocation().cellBounds().toString(),
+                    "buildable", realm.allocation().buildableBounds().toString()));
+            localizedFeedback(source, messages, "commands.admin.realm.details", Map.of(
+                    "spawn", realm.spawn().toString(), "preset", realm.preset().toString(),
+                    "members", Integer.toString(realm.members().size()),
+                    "visitors", Integer.toString(realm.invitedVisitors().size()),
+                    "policy", realm.accessPolicy().name(), "created_at", realm.createdAt().toString()));
+            realm.failure().ifPresent(failure -> localizedFeedback(source, messages,
+                    "commands.admin.realm.failure", Map.of("failure", failure.toString())));
             return 1;
         }).orElseGet(() -> {
-            source.sendError("Unknown realm ID " + id);
+            source.sendErrorKey("commands.admin.errors.unknown_realm_id", Map.of("realm_id", Long.toString(id)));
             return 0;
         });
     }
@@ -377,7 +395,7 @@ public final class RealmAdminCommandModule {
         RealmAdminCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         if (runtime == null) return 0;
         if (profiles.isEmpty()) {
-            source.sendError("The selected player has no UUID");
+            source.sendErrorKey("commands.admin.errors.player_uuid_missing");
             return 0;
         }
         PlayerIdentity profile = profiles.getFirst();
@@ -385,7 +403,7 @@ public final class RealmAdminCommandModule {
             feedback(source, messages, summary(realm));
             return 1;
         }).orElseGet(() -> {
-            source.sendError("No realm belongs to " + profile.name());
+            source.sendErrorKey("commands.admin.errors.owner_has_no_realm", Map.of("player", profile.name()));
             return 0;
         });
     }
@@ -396,10 +414,10 @@ public final class RealmAdminCommandModule {
         RealmAdminCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         if (runtime == null) return 0;
         RealmAllocation allocation = runtime.previewAllocation(new RealmId(id));
-        feedback(source, messages, "Realm " + id + " allocationProfile=" + allocation.profile()
-                + " cell=" + allocation.cell()
-                + " cellBounds=" + allocation.cellBounds()
-                + " buildable=" + allocation.buildableBounds());
+        localizedFeedback(source, messages, "commands.admin.allocation_preview", Map.of(
+                "realm_id", Long.toString(id), "profile", allocation.profile().toString(),
+                "cell", allocation.cell().toString(), "cell_bounds", allocation.cellBounds().toString(),
+                "buildable", allocation.buildableBounds().toString()));
         return 1;
     }
 
@@ -410,10 +428,11 @@ public final class RealmAdminCommandModule {
         if (runtime == null) return 0;
         var report = runtime.validateRealms();
         if (report.issues().isEmpty()) {
-            feedback(source, messages, "Paradigm Realms state is valid");
+            localizedFeedback(source, messages, "commands.admin.validation.valid", Map.of());
             return 1;
         }
-        feedback(source, messages, "Validation issues: " + report.issues().size());
+        localizedFeedback(source, messages, "commands.admin.validation.issues",
+                Map.of("count", Integer.toString(report.issues().size())));
         report.issues().forEach(issue -> reportIssue(source, messages, issue));
         return report.isValid() ? 1 : 0;
     }
@@ -424,16 +443,23 @@ public final class RealmAdminCommandModule {
         RealmAdminCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         if (runtime == null) return 0;
         var snapshot = runtime.presetCatalogSnapshot();
-        feedback(source, messages, "Preset catalog: " + snapshot.catalog().all().size()
-                + " definitions; loaded " + snapshot.loadedAt());
-        snapshot.catalog().all().forEach(preset -> feedback(source, messages,
-                preset.id().value() + " v" + preset.version()
-                        + " " + (preset.enabled() ? "ENABLED" : "DISABLED")
-                        + " " + preset.sourceType()
-                        + (preset.playerSelectable() ? " SELECTABLE" : "")
-                        + (preset.legacy() ? " LEGACY" : "")
-                        + (preset.disableReasons().isEmpty() ? ""
-                                : " - " + String.join("; ", preset.disableReasons()))));
+        localizedFeedback(source, messages, "commands.admin.presets.title", Map.of(
+                "count", Integer.toString(snapshot.catalog().all().size()),
+                "loaded_at", snapshot.loadedAt().toString()));
+        snapshot.catalog().all().forEach(preset -> localizedFeedback(source, messages,
+                "commands.admin.presets.line", Map.of(
+                        "preset", preset.id().value(), "version", Integer.toString(preset.version()),
+                        "enabled", eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                                preset.enabled() ? "common.enabled_upper" : "common.disabled_upper"),
+                        "source", preset.sourceType().name(),
+                        "selectable", preset.playerSelectable()
+                                ? eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.selectable_suffix") : "",
+                        "legacy", preset.legacy()
+                                ? eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.legacy_suffix") : "",
+                        "reasons", preset.disableReasons().isEmpty() ? ""
+                                : eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                                        "common.reason_suffix",
+                                        Map.of("reasons", String.join("; ", preset.disableReasons()))))));
         return snapshot.catalog().all().size();
     }
 
@@ -445,24 +471,31 @@ public final class RealmAdminCommandModule {
         try {
             var found = runtime.presetCatalogSnapshot().catalog().resolve(new RealmPresetId(presetValue));
             if (found.isEmpty()) {
-                source.sendError("Unknown preset " + presetValue);
+                source.sendErrorKey("commands.admin.errors.unknown_preset", Map.of("preset", presetValue));
                 return 0;
             }
             var preset = found.orElseThrow();
-            feedback(source, messages, "id=" + preset.id() + " version=" + preset.version()
-                    + " revision=" + preset.revision() + " source=" + preset.sourceType());
-            feedback(source, messages, "format=" + preset.placementFormat()
-                    + " structure=" + preset.structure().map(RealmPresetId::value).orElse("none")
-                    + " bounds=" + preset.bounds() + " spawn=" + preset.spawn());
-            feedback(source, messages, "selectable=" + preset.selectable() + " legacy=" + preset.legacy()
-                    + " requiredMods=" + preset.requiredMods() + " aliases=" + preset.aliases()
-                    + " fingerprint=" + preset.fingerprint().orElse("none"));
+            localizedFeedback(source, messages, "commands.admin.presets.identity", Map.of(
+                    "id", preset.id().toString(), "version", Integer.toString(preset.version()),
+                    "revision", preset.revision(), "source", preset.sourceType().name()));
+            localizedFeedback(source, messages, "commands.admin.presets.placement", Map.of(
+                    "format", preset.placementFormat(),
+                    "structure", preset.structure().map(RealmPresetId::value).orElseGet(() ->
+                            eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.none")),
+                    "bounds", preset.bounds().toString(), "spawn", preset.spawn().toString()));
+            localizedFeedback(source, messages, "commands.admin.presets.flags", Map.of(
+                    "selectable", Boolean.toString(preset.selectable()),
+                    "legacy", Boolean.toString(preset.legacy()),
+                    "required_mods", preset.requiredMods().toString(), "aliases", preset.aliases().toString(),
+                    "fingerprint", preset.fingerprint().orElseGet(() ->
+                            eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.none"))));
             if (!preset.disableReasons().isEmpty()) {
-                feedback(source, messages, "disabled: " + String.join("; ", preset.disableReasons()));
+                localizedFeedback(source, messages, "commands.admin.presets.disabled",
+                        Map.of("reasons", String.join("; ", preset.disableReasons())));
             }
             return 1;
         } catch (IllegalArgumentException exception) {
-            source.sendError("Invalid preset identifier.");
+            source.sendErrorKey("commands.realm.errors.invalid_preset");
             return 0;
         }
     }
@@ -474,11 +507,11 @@ public final class RealmAdminCommandModule {
         if (runtime == null) return 0;
         var issues = runtime.presetValidationIssues();
         if (issues.isEmpty()) {
-            feedback(source, messages,
-                    "Preset catalog, configuration, realm references, and void invariant are valid");
+            localizedFeedback(source, messages, "commands.admin.presets.valid", Map.of());
             return 1;
         }
-        feedback(source, messages, "Preset validation issues: " + issues.size());
+        localizedFeedback(source, messages, "commands.admin.presets.issues",
+                Map.of("count", Integer.toString(issues.size())));
         issues.forEach(issue -> reportIssue(source, messages, issue));
         return issues.stream().anyMatch(issue -> issue.severity() == ValidationSeverity.ERROR) ? 0 : 1;
     }
@@ -487,15 +520,15 @@ public final class RealmAdminCommandModule {
             CommandSource source, Supplier<? extends RealmAdminCommandRuntime> runtimeSupplier) {
         RealmAdminCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         if (runtime == null) return 0;
-        source.sendFeedback("Reloading server resources and realm preset catalog...");
+        source.sendFeedbackKey("commands.admin.presets.reloading");
         runtime.reloadPresetCatalog().whenComplete((snapshot, failure) -> source.executeOnServerThread(() -> {
             if (failure != null) {
-                source.sendError("Preset reload failed; prior catalog remains available: "
-                        + failure.getClass().getSimpleName());
+                source.sendErrorKey("commands.admin.errors.preset_reload_failed",
+                        Map.of("error", failure.getClass().getSimpleName()));
             } else {
-                source.sendFeedback("Preset reload published " + snapshot.catalog().all().size()
-                        + " definitions with " + snapshot.catalog().loadIssues().size()
-                        + " isolated issue(s).");
+                source.sendFeedbackKey("commands.admin.presets.reloaded", Map.of(
+                        "count", Integer.toString(snapshot.catalog().all().size()),
+                        "issues", Integer.toString(snapshot.catalog().loadIssues().size())));
             }
         }));
         return 1;
@@ -506,20 +539,25 @@ public final class RealmAdminCommandModule {
             CommandMessageService messages) {
         RealmAdminCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         if (runtime == null) return 0;
-        feedback(source, messages, "Import directory: config/paradigm-realms/imports");
+        localizedFeedback(source, messages, "commands.admin.imports.directory", Map.of());
         try {
             var bindings = runtime.presetImportBindings();
-            feedback(source, messages, "Bound import definitions: " + bindings.size());
+            localizedFeedback(source, messages, "commands.admin.imports.bindings",
+                    Map.of("count", Integer.toString(bindings.size())));
             bindings.entrySet().stream().sorted(Map.Entry.comparingByKey(
                     Comparator.comparing(RealmPresetId::value)))
-                    .forEach(entry -> feedback(source, messages, entry.getKey() + " <- " + entry.getValue()));
+                    .forEach(entry -> localizedFeedback(source, messages, "commands.admin.imports.binding_line",
+                            Map.of("preset", entry.getKey().toString(), "file", entry.getValue())));
         } catch (IOException exception) {
-            source.sendError("Cannot read imported preset bindings: " + exception.getMessage());
+            source.sendErrorKey("commands.admin.errors.import_bindings_read",
+                    Map.of("detail", String.valueOf(exception.getMessage())));
             return 0;
         }
         var files = runtime.presetImportFiles();
-        feedback(source, messages, "Available files: " + files.size());
-        files.forEach(file -> feedback(source, messages, "file=" + file));
+        localizedFeedback(source, messages, "commands.admin.imports.files",
+                Map.of("count", Integer.toString(files.size())));
+        files.forEach(file -> localizedFeedback(source, messages, "commands.admin.imports.file_line",
+                Map.of("file", file)));
         return 1;
     }
 
@@ -539,12 +577,12 @@ public final class RealmAdminCommandModule {
             RealmPresetId id = new RealmPresetId(presetValue);
             id.requireNamespaced();
             PresetImportResult inspected = runtime.inspectPresetImport(file);
-            feedback(source, messages, "Pre-publication validation summary:");
+            localizedFeedback(source, messages, "commands.admin.imports.prepublication", Map.of());
             reportImport(source, messages, inspected);
             if (!inspected.successful()) return 0;
             return reportImport(source, messages, runtime.importPreset(file, id));
         } catch (IllegalArgumentException exception) {
-            source.sendError("Invalid namespaced preset ID.");
+            source.sendErrorKey("commands.admin.errors.invalid_namespaced_preset");
             return 0;
         }
     }
@@ -558,7 +596,7 @@ public final class RealmAdminCommandModule {
             return reportImport(source, messages,
                     runtime.removePresetImport(new RealmPresetId(presetValue)));
         } catch (IllegalArgumentException exception) {
-            source.sendError("Invalid preset ID.");
+            source.sendErrorKey("commands.admin.errors.invalid_preset_id");
             return 0;
         }
     }
@@ -571,24 +609,30 @@ public final class RealmAdminCommandModule {
         try {
             return reportImport(source, messages, runtime.reimportPreset(new RealmPresetId(presetValue)));
         } catch (IllegalArgumentException exception) {
-            source.sendError("Invalid preset ID.");
+            source.sendErrorKey("commands.admin.errors.invalid_preset_id");
             return 0;
         }
     }
 
     private static int reportImport(
             CommandSource source, CommandMessageService messages, PresetImportResult result) {
-        feedback(source, messages, "status=" + result.status() + " file=" + result.sourceFile()
-                + result.presetId().map(id -> " preset=" + id).orElse(""));
+        localizedFeedback(source, messages, "commands.admin.imports.result", Map.of(
+                "status", result.status().name(), "file", result.sourceFile(),
+                "preset", result.presetId().map(id -> eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "commands.admin.imports.preset_suffix", Map.of("preset", id.toString()))).orElse("")));
         if (result.format().isPresent()) {
-            feedback(source, messages, "format=" + result.format().orElseThrow()
-                    + " fingerprint=" + result.fingerprint().orElse("none")
-                    + " bounds=" + result.bounds().map(Object::toString).orElse("none")
-                    + " blocks=" + result.blockCount()
-                    + " sanitizedBlockEntities=" + result.sanitizedBlockEntityCount());
+            localizedFeedback(source, messages, "commands.admin.imports.details", Map.of(
+                    "format", result.format().orElseThrow().name(),
+                    "fingerprint", result.fingerprint().orElseGet(() ->
+                            eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.none")),
+                    "bounds", result.bounds().map(Object::toString).orElseGet(() ->
+                            eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.none")),
+                    "blocks", Integer.toString(result.blockCount()),
+                    "sanitized", Integer.toString(result.sanitizedBlockEntityCount())));
         }
-        result.warnings().forEach(warning -> feedback(source, messages, "WARNING: " + warning));
-        result.errors().forEach(source::sendError);
+        result.warnings().forEach(warning -> localizedFeedback(source, messages,
+                "commands.admin.imports.warning", Map.of("warning", warning)));
+        result.errors().forEach(error -> source.sendErrorKey("common.detail", Map.of("detail", error)));
         return result.successful() ? 1 : 0;
     }
 
@@ -598,15 +642,15 @@ public final class RealmAdminCommandModule {
         RealmAdminCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         PlayerReference player = source.player().orElse(null);
         if (runtime == null || player == null) {
-            source.sendError("Session bypass can only be used by an online player.");
+            source.sendErrorKey("commands.admin.errors.bypass_player_required");
             return 0;
         }
         if (enabled) {
             runtime.enableSessionBypass(player.uuid());
-            source.sendFeedback("WARNING: explicit realm protection bypass is ON for this session.");
+            source.sendFeedbackKey("commands.admin.bypass_enabled");
         } else {
             runtime.disableSessionBypass(player.uuid());
-            source.sendFeedback("Realm protection bypass is OFF.");
+            source.sendFeedbackKey("commands.admin.bypass_disabled");
         }
         return 1;
     }
@@ -616,11 +660,12 @@ public final class RealmAdminCommandModule {
         RealmAdminCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         PlayerReference player = source.player().orElse(null);
         if (runtime == null || player == null) {
-            source.sendError("Session bypass status is only available to a player.");
+            source.sendErrorKey("commands.admin.errors.bypass_status_player_required");
             return 0;
         }
-        source.sendFeedback("Realm protection bypass is "
-                + (runtime.sessionBypassEnabled(player.uuid()) ? "ON" : "OFF") + ".");
+        source.sendFeedbackKey("commands.admin.bypass_status", Map.of("state",
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        runtime.sessionBypassEnabled(player.uuid()) ? "common.on_upper" : "common.off_upper")));
         return 1;
     }
 
@@ -639,14 +684,15 @@ public final class RealmAdminCommandModule {
     private static RealmAdminCommandRuntime requireRuntime(
             CommandSource source, Supplier<? extends RealmAdminCommandRuntime> runtimeSupplier) {
         RealmAdminCommandRuntime runtime = runtimeSupplier.get();
-        if (runtime == null) source.sendError("Paradigm Realms has not completed server startup");
+        if (runtime == null) source.sendErrorKey("errors.startup_incomplete");
         return runtime;
     }
 
     private static void reportIssue(
             CommandSource source, CommandMessageService messages, ValidationIssue issue) {
-        feedback(source, messages, issue.severity() + " " + issue.code()
-                + " " + issue.path() + ": " + issue.message());
+        localizedFeedback(source, messages, "commands.admin.validation.issue", Map.of(
+                "severity", issue.severity().name(), "code", issue.code(),
+                "path", issue.path(), "message", issue.message()));
     }
 
     private static boolean allowed(
@@ -655,13 +701,18 @@ public final class RealmAdminCommandModule {
     }
 
     private static String summary(Realm realm) {
-        return "realm=" + realm.id().value()
-                + " owner=" + realm.owner().uuid()
-                + " state=" + realm.state();
+        return eu.avalanche7.paradigmrealms.message.PlayerMessages.text("commands.admin.realm.summary", Map.of(
+                "realm_id", Long.toString(realm.id().value()), "owner", realm.owner().uuid().toString(),
+                "state", realm.state().name()));
     }
 
     private static void feedback(
             CommandSource source, CommandMessageService messages, String message) {
-        messages.send(source, "<color:aqua>{message}</color>", Map.of("message", message), message);
+        messages.sendLocalized(source, "commands.admin.message", Map.of("message", message));
+    }
+
+    private static void localizedFeedback(
+            CommandSource source, CommandMessageService messages, String key, Map<String, String> values) {
+        messages.sendLocalized(source, key, values);
     }
 }

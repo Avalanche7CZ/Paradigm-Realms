@@ -14,6 +14,7 @@ import eu.avalanche7.paradigmrealms.platform.integration.OptionalIntegrationBoot
 import eu.avalanche7.paradigmrealms.platform.message.MessageRouter;
 import eu.avalanche7.paradigmrealms.platform.permission.ForgePermissionGate;
 import eu.avalanche7.paradigmrealms.platform.protection.ForgeProtectionEvents;
+import eu.avalanche7.paradigmrealms.message.LanguageCatalog;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraftforge.common.MinecraftForge;
@@ -37,7 +38,7 @@ public final class ParadigmRealms {
     private final RealmsConfig config;
     private final ForgePresetCatalogManager presets;
     private final ForgePermissionGate permissions = new ForgePermissionGate();
-    private final MessageRouter messages = new MessageRouter();
+    private final MessageRouter messages;
     private volatile ForgeRealmRuntime runtime;
     private AutoCloseable optionalIntegration = () -> {};
     private int presenceTicks;
@@ -45,6 +46,10 @@ public final class ParadigmRealms {
     public ParadigmRealms() {
         logStartupBanner();
         config = RealmsConfigLoader.load();
+        LanguageCatalog language = LanguageCatalog.load(
+                ForgeLoaderServices.getInstance().getConfigDir().resolve("paradigm-realms/lang"),
+                config.language(), LOGGER::info, LOGGER::warn);
+        messages = new MessageRouter(language);
         presets = new ForgePresetCatalogManager(config);
         MinecraftForge.EVENT_BUS.register(this);
         LOGGER.info("Paradigm Realms Forge server adapter initialized");

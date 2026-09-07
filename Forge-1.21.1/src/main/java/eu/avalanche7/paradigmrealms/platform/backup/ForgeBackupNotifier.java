@@ -36,7 +36,7 @@ final class ForgeBackupNotifier {
     void captureStarted(Realm realm) {
         forEachOccupant(realm, player -> {
             sendChat(player, RealmMessageKey.BACKUP_CAPTURE_STARTED, realmValues(realm));
-            player.sendMessage(Text.literal("Saving realm backup...")
+            player.sendMessage(Text.literal(messages.translate("backup.starting", java.util.Map.of()))
                     .formatted(net.minecraft.util.Formatting.AQUA), true);
         });
     }
@@ -46,7 +46,7 @@ final class ForgeBackupNotifier {
                 "captured", Integer.toString(captured),
                 "total", Integer.toString(total));
         server.execute(() -> forEachOccupant(realm, player -> player.sendMessage(
-                Text.literal(RealmMessageKey.BACKUP_PROGRESS.fallback(values)),
+                Text.literal(messages.translate(RealmMessageKey.BACKUP_PROGRESS.key(), values)),
                 true)));
     }
 
@@ -109,8 +109,9 @@ final class ForgeBackupNotifier {
             ServerPlayerEntity player,
             RealmMessageKey key,
             java.util.Map<String, String> values) {
-        messages.send(
+        messages.sendLocalized(
                 player.getCommandSource(),
+                key.key(),
                 key.template(),
                 values,
                 key.fallback(values));

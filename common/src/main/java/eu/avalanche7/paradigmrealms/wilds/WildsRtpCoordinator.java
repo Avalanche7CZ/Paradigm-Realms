@@ -52,7 +52,7 @@ public final class WildsRtpCoordinator {
         searches.put(player, new Search(
                 player, state.activeEpoch(), seeds.getAsLong(), now,
                 new EnumMap<>(RejectReason.class)));
-        platform.notify(player, "Searching for a safe Wilds location...");
+        platform.notify(player, eu.avalanche7.paradigmrealms.message.PlayerMessages.text("wilds.rtp_searching"));
         return WildsActionResult.SUCCESS;
     }
 
@@ -124,13 +124,14 @@ public final class WildsRtpCoordinator {
         lifecycle.approvePlayer(search.player);
         cooldowns.put(search.player, now.plus(current.rtp().cooldown()));
         searches.remove(search.player);
-        platform.notify(search.player,
-                "Teleported to Wilds after " + search.attempt + " attempt(s).");
+        platform.notify(search.player, eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                "wilds.rtp_succeeded", java.util.Map.of("attempts", Integer.toString(search.attempt))));
     }
 
     private void finish(Search search, String detail) {
         searches.remove(search.player);
-        if (platform.online(search.player)) platform.notify(search.player, "Wilds RTP failed: " + detail);
+        if (platform.online(search.player)) platform.notify(search.player,
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("wilds.rtp_failed"));
     }
 
     private static RejectReason map(WildsRtpProbeResult.Status status) {

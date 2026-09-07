@@ -1,6 +1,7 @@
 package eu.avalanche7.paradigmrealms.modules.command;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -182,9 +183,9 @@ public final class RealmOwnerCommandModule {
             CommandSource source, Supplier<? extends RealmOwnerCommandRuntime> supplier, String name) {
         try {
             return result(source, require(source, supplier).setRealmName(requirePlayer(source).uuid(), name),
-                    "Realm name changed.");
+                    "commands.owner.name_changed", Map.of());
         } catch (IllegalArgumentException exception) {
-            source.sendError("Invalid realm name.");
+            source.sendErrorKey("commands.owner.errors.invalid_name");
             return 0;
         }
     }
@@ -194,9 +195,10 @@ public final class RealmOwnerCommandModule {
         try {
             return result(source,
                     require(source, supplier).setRealmDescription(requirePlayer(source).uuid(), description),
-                    description.isEmpty() ? "Realm description cleared." : "Realm description changed.");
+                    description.isEmpty() ? "commands.owner.description_cleared"
+                            : "commands.owner.description_changed", Map.of());
         } catch (IllegalArgumentException exception) {
-            source.sendError("Invalid realm description.");
+            source.sendErrorKey("commands.owner.errors.invalid_description");
             return 0;
         }
     }
@@ -205,17 +207,18 @@ public final class RealmOwnerCommandModule {
             CommandSource source, Supplier<? extends RealmOwnerCommandRuntime> supplier) {
         Realm realm = require(source, supplier).managedRealm(requirePlayer(source).uuid()).orElse(null);
         if (realm == null) {
-            source.sendError("You do not own or manage a realm.");
+            source.sendErrorKey("errors.owner_or_manager_required");
             return 0;
         }
-        source.sendFeedback(realm.description().isEmpty() ? "Realm description is empty." : realm.description());
+        if (realm.description().isEmpty()) source.sendFeedbackKey("commands.owner.description_empty");
+        else source.sendFeedback(realm.description());
         return 1;
     }
 
     private static int listing(
             CommandSource source, Supplier<? extends RealmOwnerCommandRuntime> supplier, boolean listed) {
         return result(source, require(source, supplier).setRealmListed(requirePlayer(source).uuid(), listed),
-                listed ? "Public directory listing enabled." : "Public directory listing disabled.");
+                listed ? "commands.owner.listing_enabled" : "commands.owner.listing_disabled", Map.of());
     }
 
     private static int directory(
@@ -223,20 +226,31 @@ public final class RealmOwnerCommandModule {
             PlayerDirectory players, int page) {
         var result = require(source, supplier).publicRealms(page);
         if (!result.valid()) {
-            source.sendError("Invalid public realm directory page. Available pages: " + result.pageCount());
+            source.sendErrorKey("commands.owner.errors.invalid_directory_page",
+                    Map.of("pages", Integer.toString(result.pageCount())));
             return 0;
         }
-        source.sendFeedback("Public realms — page " + result.requestedPage() + "/" + result.pageCount());
-        if (result.entries().isEmpty()) source.sendFeedback("No realms are currently listed.");
+        source.sendFeedbackKey("commands.owner.directory_title", Map.of(
+                "page", Integer.toString(result.requestedPage()), "pages", Integer.toString(result.pageCount())));
+        if (result.entries().isEmpty()) source.sendFeedbackKey("commands.owner.directory_empty");
         result.entries().forEach(entry -> {
-            String owner = players.cached(source, entry.ownerUuid()).map(PlayerIdentity::name).orElse("Unknown owner");
-            String description = entry.description().isEmpty() ? "" : " — " + entry.description();
+            String owner = players.cached(source, entry.ownerUuid()).map(PlayerIdentity::name).orElseGet(() ->
+                    eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.unknown_owner"));
+            String description = entry.description().isEmpty() ? "" :
+                    eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                            "commands.owner.directory_description", Map.of("description", entry.description()));
             source.sendFeedback(new CommandText(List.of(
-                    CommandText.Part.styled("◆ " + entry.displayName(), 0xF8FAFC, true),
-                    CommandText.Part.styled(" by " + owner + description + " ", 0x94A3B8, false),
-                    CommandText.Part.styledInteractive("[visit]", 0x22D3EE, true, false,
+                    CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                            "commands.owner.directory_name", Map.of("name", entry.displayName())), 0xF8FAFC, true),
+                    CommandText.Part.styled(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                            "commands.owner.directory_owner", Map.of("owner", owner, "description", description)),
+                            0x94A3B8, false),
+                    CommandText.Part.styledInteractive(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                            "common.visit_button"), 0x22D3EE, true, false,
                             CommandText.ClickAction.RUN_COMMAND, "/realm visit id " + entry.realmId().value(),
-                            "Visit realm #" + entry.realmId().value()))), false);
+                            eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                                    "commands.owner.visit_hover",
+                                    Map.of("realm_id", Long.toString(entry.realmId().value())))))), false);
         });
         return 1;
     }
@@ -248,10 +262,10 @@ public final class RealmOwnerCommandModule {
         if (identity == null) return 0;
         var status = require(source, supplier).kickFromRealm(requirePlayer(source).uuid(), identity.uuid());
         if (status != RealmOwnerCommandRuntime.KickResult.KICKED) {
-            source.sendError("Realm kick failed: " + status);
+            source.sendErrorKey("commands.owner.errors.kick_failed", Map.of("status", status.name()));
             return 0;
         }
-        source.sendFeedback(identity.name() + " was kicked from the realm.");
+        source.sendFeedbackKey("commands.owner.kicked", Map.of("player", identity.name()));
         return 1;
     }
 
@@ -263,9 +277,9 @@ public final class RealmOwnerCommandModule {
         try {
             return result(source, require(source, supplier).banFromRealm(
                     requirePlayer(source).uuid(), identity.uuid(), identity.name(), reason),
-                    identity.name() + " was banned from the realm.");
+                    "commands.owner.banned", Map.of("player", identity.name()));
         } catch (IllegalArgumentException exception) {
-            source.sendError("Invalid ban reason.");
+            source.sendErrorKey("commands.owner.errors.invalid_ban_reason");
             return 0;
         }
     }
@@ -276,14 +290,15 @@ public final class RealmOwnerCommandModule {
         PlayerIdentity identity = identity(source, players, name);
         if (identity == null) return 0;
         return result(source, require(source, supplier).unbanFromRealm(
-                requirePlayer(source).uuid(), identity.uuid()), identity.name() + " was unbanned.");
+                requirePlayer(source).uuid(), identity.uuid()), "commands.owner.unbanned",
+                Map.of("player", identity.name()));
     }
 
     private static int bans(
             CommandSource source, Supplier<? extends RealmOwnerCommandRuntime> supplier, int page) {
         Realm realm = require(source, supplier).managedRealm(requirePlayer(source).uuid()).orElse(null);
         if (realm == null) {
-            source.sendError("You do not own or manage a realm.");
+            source.sendErrorKey("errors.owner_or_manager_required");
             return 0;
         }
         var bans = realm.bans().values().stream()
@@ -292,13 +307,16 @@ public final class RealmOwnerCommandModule {
         int pageSize = 8;
         int pages = Math.max(1, (bans.size() + pageSize - 1) / pageSize);
         if (page > pages) {
-            source.sendError("Invalid ban page. Available pages: " + pages);
+            source.sendErrorKey("commands.owner.errors.invalid_ban_page", Map.of("pages", Integer.toString(pages)));
             return 0;
         }
-        source.sendFeedback("Realm bans — page " + page + "/" + pages);
+        source.sendFeedbackKey("commands.owner.bans_title",
+                Map.of("page", Integer.toString(page), "pages", Integer.toString(pages)));
         bans.stream().skip((long) (page - 1) * pageSize).limit(pageSize).forEach(ban ->
-                source.sendFeedback("- " + ban.playerNameSnapshot()
-                        + ban.reason().map(reason -> " — " + reason).orElse("")));
+                source.sendFeedbackKey(ban.reason().isPresent()
+                                ? "commands.owner.ban_line_reason" : "commands.owner.ban_line",
+                        Map.of("player", ban.playerNameSnapshot(),
+                                "reason", ban.reason().orElse(""))));
         return 1;
     }
 
@@ -311,25 +329,27 @@ public final class RealmOwnerCommandModule {
         try {
             role = RealmMemberRole.valueOf(roleName.toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException exception) {
-            source.sendError("Role must be member or manager.");
+            source.sendErrorKey("commands.owner.errors.invalid_role");
             return 0;
         }
         return result(source, require(source, supplier).setRealmRole(
-                requirePlayer(source).uuid(), identity.uuid(), role),
-                identity.name() + " is now a " + role.name().toLowerCase(java.util.Locale.ROOT) + ".");
+                requirePlayer(source).uuid(), identity.uuid(), role), "commands.owner.role_changed",
+                Map.of("player", identity.name(), "role",
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                                "roles." + role.name().toLowerCase(java.util.Locale.ROOT))));
     }
 
     private static int managers(
             CommandSource source, Supplier<? extends RealmOwnerCommandRuntime> supplier, PlayerDirectory players) {
         Realm realm = require(source, supplier).managedRealm(requirePlayer(source).uuid()).orElse(null);
         if (realm == null) {
-            source.sendError("You do not own or manage a realm.");
+            source.sendErrorKey("errors.owner_or_manager_required");
             return 0;
         }
-        source.sendFeedback("Realm managers:");
-        if (realm.managers().isEmpty()) source.sendFeedback("- none");
-        realm.managers().forEach(uuid -> source.sendFeedback("- "
-                + players.cached(source, uuid).map(PlayerIdentity::name).orElse(uuid.toString())));
+        source.sendFeedbackKey("commands.owner.managers_title");
+        if (realm.managers().isEmpty()) source.sendFeedbackKey("common.list_none");
+        realm.managers().forEach(uuid -> source.sendFeedbackKey("common.list_item",
+                Map.of("item", players.cached(source, uuid).map(PlayerIdentity::name).orElse(uuid.toString()))));
         return 1;
     }
 
@@ -337,12 +357,13 @@ public final class RealmOwnerCommandModule {
             CommandSource source, Supplier<? extends RealmOwnerCommandRuntime> supplier, PlayerDirectory players) {
         PlayerReference actor = requirePlayer(source);
         List<RealmOwnerCommandRuntime.Occupant> occupants = require(source, supplier).realmOccupants(actor.uuid());
-        source.sendFeedback("Players in your realm:");
-        if (occupants.isEmpty()) source.sendFeedback("- none");
-        occupants.forEach(occupant -> source.sendFeedback("- "
-                + players.cached(source, occupant.player()).map(PlayerIdentity::name)
-                        .orElse(occupant.player().toString())
-                + " [" + occupant.role().name().toLowerCase(java.util.Locale.ROOT) + "]"));
+        source.sendFeedbackKey("commands.owner.occupants_title");
+        if (occupants.isEmpty()) source.sendFeedbackKey("common.list_none");
+        occupants.forEach(occupant -> source.sendFeedbackKey("commands.owner.occupant_line", Map.of(
+                "player", players.cached(source, occupant.player()).map(PlayerIdentity::name)
+                        .orElse(occupant.player().toString()),
+                "role", eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "roles." + occupant.role().name().toLowerCase(java.util.Locale.ROOT)))));
         return 1;
     }
 
@@ -362,10 +383,9 @@ public final class RealmOwnerCommandModule {
                     .transferFailure(result.status()));
             return 0;
         }
-        source.sendFeedback("Ownership transfer offered to " + target.name() + ".");
+        source.sendFeedbackKey("commands.owner.transfer_offered", Map.of("player", target.name()));
         players.onlineSource(source, target.uuid()).ifPresent(targetSource ->
-                targetSource.sendFeedback(ownerName + " offered you their realm. Use /realm transfer accept "
-                        + ownerName));
+                targetSource.sendFeedbackKey("commands.owner.transfer_received", Map.of("owner", ownerName)));
         return 1;
     }
 
@@ -386,7 +406,7 @@ public final class RealmOwnerCommandModule {
                     .transferFailure(result.status()));
             return 0;
         }
-        source.sendFeedback(accept ? "You now own the realm." : "Realm transfer declined.");
+        source.sendFeedbackKey(accept ? "commands.owner.transfer_accepted" : "commands.owner.transfer_declined");
         return 1;
     }
 
@@ -395,10 +415,10 @@ public final class RealmOwnerCommandModule {
         var result = require(source, supplier).cancelTransfer(requirePlayer(source).uuid());
         if (result.status()
                 != eu.avalanche7.paradigmrealms.application.RealmOwnershipTransferService.Status.CANCELLED) {
-            source.sendError("No pending ownership transfer could be cancelled.");
+            source.sendErrorKey("commands.owner.errors.transfer_cancel_missing");
             return 0;
         }
-        source.sendFeedback("Ownership transfer cancelled.");
+        source.sendFeedbackKey("commands.owner.transfer_cancelled");
         return 1;
     }
 
@@ -406,11 +426,14 @@ public final class RealmOwnerCommandModule {
             CommandSource source, Supplier<? extends RealmOwnerCommandRuntime> supplier) {
         Realm realm = require(source, supplier).managedRealm(requirePlayer(source).uuid()).orElse(null);
         if (realm == null) {
-            source.sendError("You do not own or manage a realm.");
+            source.sendErrorKey("errors.owner_or_manager_required");
             return 0;
         }
         for (RealmSetting setting : RealmSetting.values()) {
-            source.sendFeedback(setting.commandName() + ": " + (realm.settings().value(setting) ? "on" : "off"));
+            source.sendFeedbackKey("commands.owner.setting_line", Map.of(
+                    "setting", setting.commandName(), "value",
+                    eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                            realm.settings().value(setting) ? "common.on" : "common.off")));
         }
         return 1;
     }
@@ -422,16 +445,16 @@ public final class RealmOwnerCommandModule {
         try {
             setting = RealmSetting.parse(settingName);
         } catch (IllegalArgumentException exception) {
-            source.sendError("Unknown realm setting.");
+            source.sendErrorKey("commands.owner.errors.unknown_setting");
             return 0;
         }
         if (!valueName.equalsIgnoreCase("on") && !valueName.equalsIgnoreCase("off")) {
-            source.sendError("Setting value must be on or off.");
+            source.sendErrorKey("commands.owner.errors.invalid_setting_value");
             return 0;
         }
         return result(source, require(source, supplier).setRealmSetting(
                 requirePlayer(source).uuid(), setting, valueName.equalsIgnoreCase("on")),
-                "Realm setting " + setting.commandName() + " changed.");
+                "commands.owner.setting_changed", Map.of("setting", setting.commandName()));
     }
 
     private static int visitId(
@@ -440,12 +463,12 @@ public final class RealmOwnerCommandModule {
         PlayerReference player = requirePlayer(source);
         Realm realm = runtime.realmById(new RealmId(id)).orElse(null);
         if (realm == null) {
-            source.sendError("Unknown realm ID.");
+            source.sendErrorKey("errors.realm_id_unknown");
             return 0;
         }
         var decision = runtime.evaluateVisit(player.uuid(), realm.owner().uuid());
         if (!decision.allowed() || !decision.realm().map(value -> value.id().equals(realm.id())).orElse(false)) {
-            source.sendError("You cannot visit that realm.");
+            source.sendErrorKey("commands.owner.errors.visit_denied");
             return 0;
         }
         TeleportResult teleport = runtime.visit(player.uuid(), realm);
@@ -454,14 +477,15 @@ public final class RealmOwnerCommandModule {
                     .teleportFailure(teleport));
             return 0;
         }
-        source.sendFeedback("Visiting " + realm.displayName() + ".");
+        source.sendFeedbackKey("commands.owner.visiting", Map.of("realm", realm.displayName()));
         return 1;
     }
 
     private static int result(
-            CommandSource source, RealmOwnerManagementService.Result result, String success) {
+            CommandSource source, RealmOwnerManagementService.Result result,
+            String successKey, Map<String, String> values) {
         if (result.status() == RealmOwnerManagementService.Status.CHANGED) {
-            source.sendFeedback(success);
+            source.sendFeedbackKey(successKey, values);
             return 1;
         }
         source.sendError(eu.avalanche7.paradigmrealms.message.PlayerMessageMappings
@@ -472,11 +496,11 @@ public final class RealmOwnerCommandModule {
     private static PlayerIdentity identity(CommandSource source, PlayerDirectory players, String name) {
         PlayerIdentityResolution resolution = players.resolveCached(source, name);
         if (resolution.status() == PlayerIdentityResolution.Status.AMBIGUOUS) {
-            source.sendError("That cached player name is ambiguous.");
+            source.sendErrorKey("errors.player_name_ambiguous");
             return null;
         }
         if (resolution.status() == PlayerIdentityResolution.Status.UNKNOWN) {
-            source.sendError("No cached player has that name.");
+            source.sendErrorKey("errors.player_not_cached");
             return null;
         }
         return resolution.identity().orElseThrow();
@@ -485,13 +509,15 @@ public final class RealmOwnerCommandModule {
     private static RealmOwnerCommandRuntime require(
             CommandSource source, Supplier<? extends RealmOwnerCommandRuntime> supplier) {
         RealmOwnerCommandRuntime runtime = supplier.get();
-        if (runtime == null) throw new IllegalStateException("Paradigm Realms has not completed startup.");
+        if (runtime == null) throw new IllegalStateException(
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("errors.startup_incomplete"));
         return runtime;
     }
 
     private static PlayerReference requirePlayer(CommandSource source) {
         PlayerReference player = source.player().orElse(null);
-        if (player == null) throw new IllegalStateException("This command can only be used by a player.");
+        if (player == null) throw new IllegalStateException(
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("errors.player_only"));
         return player;
     }
 

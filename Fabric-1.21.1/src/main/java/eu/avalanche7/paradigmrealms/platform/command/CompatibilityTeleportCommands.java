@@ -52,7 +52,8 @@ public final class CompatibilityTeleportCommands {
         ServerPlayerEntity player = source.getPlayerOrThrow();
         ServerWorld world = source.getServer().getWorld(worldKey);
         if (world == null) {
-            source.sendError(Text.literal("Dimension is not loaded: " + worldKey.getValue()));
+            source.sendError(Text.literal(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                    "compatibility.dimension_not_loaded", java.util.Map.of("dimension", worldKey.getValue().toString()))));
             return 0;
         }
 
@@ -60,14 +61,15 @@ public final class CompatibilityTeleportCommands {
                 ? ensureRealmsTestPlatform(world)
                 : safeSurfaceSpawn(world);
         if (!world.getWorldBorder().contains(destination)) {
-            source.sendError(Text.literal("Compatibility destination is outside the world border"));
+            source.sendError(Text.literal(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                    "compatibility.outside_border")));
             return 0;
         }
         player.stopRiding();
         player.teleport(world, destination.getX() + 0.5, destination.getY(), destination.getZ() + 0.5,
                 player.getYaw(), player.getPitch());
-        source.sendFeedback(() -> Text.literal("Teleported to " + worldKey.getValue()
-                + " for compatibility testing"), false);
+        source.sendFeedback(() -> Text.literal(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                "compatibility.teleported", java.util.Map.of("dimension", worldKey.getValue().toString()))), false);
         return 1;
     }
 

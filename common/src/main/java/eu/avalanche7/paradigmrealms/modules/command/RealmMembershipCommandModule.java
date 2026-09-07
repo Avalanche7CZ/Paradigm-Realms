@@ -120,23 +120,20 @@ public final class RealmMembershipCommandModule {
         if (runtime == null || owner == null) return 0;
         var resolution = players.resolveCached(source, targetName);
         if (resolution.status() == eu.avalanche7.paradigmrealms.platform.player.PlayerIdentityResolution.Status.AMBIGUOUS) {
-            source.sendError("That cached player name is ambiguous.");
+            source.sendErrorKey("errors.player_name_ambiguous");
             return 0;
         }
         if (resolution.status() == eu.avalanche7.paradigmrealms.platform.player.PlayerIdentityResolution.Status.UNKNOWN) {
-            source.sendError("No cached player has that name.");
+            source.sendErrorKey("errors.player_not_cached");
             return 0;
         }
         PlayerIdentity resolved = resolution.identity().orElseThrow();
         MembershipResult result = runtime.invite(owner.uuid(), owner.name(), resolved.uuid(), resolved.name());
         if (!result.succeeded()) return membershipError(source, result);
-        messages.send(source, "<color:aqua>Invitation {status}</color> for {player}.",
-                Map.of("status", result.status().name().toLowerCase(), "player", resolved.name()),
-                "Invitation " + result.status().name().toLowerCase() + " for " + resolved.name() + ".");
-        players.onlineSource(source, resolved.uuid()).ifPresent(targetSource -> messages.send(targetSource,
-                "<color:aqua>{owner}</color> invited you to their realm. Use /realm accept {owner}.",
-                Map.of("owner", owner.name()), owner.name() + " invited you to their realm. Use /realm accept "
-                        + owner.name() + "."));
+        messages.sendLocalized(source, "commands.membership.invitation_result",
+                Map.of("status", result.status().name().toLowerCase(), "player", resolved.name()));
+        players.onlineSource(source, resolved.uuid()).ifPresent(targetSource -> messages.sendLocalized(targetSource,
+                "commands.membership.invitation_received", Map.of("owner", owner.name())));
         return 1;
     }
 
@@ -147,15 +144,19 @@ public final class RealmMembershipCommandModule {
         if (runtime == null || player == null) return 0;
         var invitations = runtime.invitationsFor(player.uuid());
         if (invitations.isEmpty()) {
-            source.sendFeedback("You have no pending realm invitations.");
+            source.sendFeedbackKey("commands.membership.no_invitations");
             return 1;
         }
-        source.sendFeedback("Pending realm invitations:");
+        source.sendFeedbackKey("commands.membership.invitations_title");
         invitations.forEach(invitation -> {
             String owner = invitation.ownerNameSnapshot();
-            source.sendFeedback(CommandText.literal("- " + owner + " ").append(
-                    CommandText.Part.interactive("[accept]", CommandText.ClickAction.SUGGEST_COMMAND,
-                            "/realm accept " + owner, "Suggest the vanilla server command")), false);
+            source.sendFeedback(CommandText.literal(
+                    eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                            "commands.membership.invitation_line", Map.of("owner", owner))).append(
+                    CommandText.Part.interactive(
+                            eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.accept_button"),
+                            CommandText.ClickAction.SUGGEST_COMMAND, "/realm accept " + owner,
+                            eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.suggest_command"))), false);
         });
         return invitations.size();
     }
@@ -168,7 +169,7 @@ public final class RealmMembershipCommandModule {
         if (runtime == null || player == null) return 0;
         Optional<PlayerIdentity> owner = resolveOwner(source, runtime, players, ownerName);
         if (owner.isEmpty()) {
-            source.sendError("Unknown cached realm owner.");
+            source.sendErrorKey("errors.realm_owner_unknown");
             return 0;
         }
         MembershipResult result = accept
@@ -176,8 +177,7 @@ public final class RealmMembershipCommandModule {
                 : runtime.decline(player.uuid(), owner.orElseThrow().uuid());
         if (!result.succeeded()) return membershipError(source, result);
         String action = accept ? "accepted" : "declined";
-        messages.send(source, "Realm invitation {action}.", Map.of("action", action),
-                "Realm invitation " + action + ".");
+        messages.sendLocalized(source, "commands.membership.invitation_action", Map.of("action", action));
         return 1;
     }
 
@@ -190,20 +190,19 @@ public final class RealmMembershipCommandModule {
         Optional<Realm> realm = runtime.realms().stream()
                 .filter(candidate -> candidate.owner().uuid().equals(owner.uuid())).findFirst();
         if (realm.isEmpty()) {
-            source.sendError("You do not own a realm.");
+            source.sendErrorKey("commands.realm.errors.not_owner");
             return 0;
         }
         Optional<PlayerIdentity> member = resolveMember(
                 source, players, realm.orElseThrow().members(), memberName);
         if (member.isEmpty()) {
-            source.sendError("No matching cached realm member.");
+            source.sendErrorKey("commands.membership.errors.member_not_found");
             return 0;
         }
         MembershipResult result = runtime.remove(owner.uuid(), member.orElseThrow().uuid());
         if (!result.succeeded()) return membershipError(source, result);
-        messages.send(source, "Removed {player} from the realm.",
-                Map.of("player", member.orElseThrow().name()),
-                "Removed " + member.orElseThrow().name() + " from the realm.");
+        messages.sendLocalized(source, "commands.membership.member_removed",
+                Map.of("player", member.orElseThrow().name()));
         return 1;
     }
 
@@ -215,13 +214,12 @@ public final class RealmMembershipCommandModule {
         if (runtime == null || member == null) return 0;
         Optional<PlayerIdentity> owner = resolveOwner(source, runtime, players, ownerName);
         if (owner.isEmpty()) {
-            source.sendError("Unknown cached realm owner.");
+            source.sendErrorKey("errors.realm_owner_unknown");
             return 0;
         }
         MembershipResult result = runtime.leave(member.uuid(), owner.orElseThrow().uuid());
         if (!result.succeeded()) return membershipError(source, result);
-        messages.send(source, "You left {owner}'s realm.", Map.of("owner", owner.orElseThrow().name()),
-                "You left " + owner.orElseThrow().name() + "'s realm.");
+        messages.sendLocalized(source, "commands.membership.left", Map.of("owner", owner.orElseThrow().name()));
         return 1;
     }
 
@@ -236,7 +234,7 @@ public final class RealmMembershipCommandModule {
             Optional<PlayerIdentity> owner = resolveOwner(
                     source, runtime, players, requestedOwner.orElseThrow());
             if (owner.isEmpty()) {
-                source.sendError("Unknown cached realm owner.");
+                source.sendErrorKey("errors.realm_owner_unknown");
                 return 0;
             }
             targetOwner = Optional.of(owner.orElseThrow().uuid());
@@ -248,14 +246,17 @@ public final class RealmMembershipCommandModule {
         }
         Realm realm = decision.realm().orElseThrow();
         String ownerName = players.cached(source, realm.owner().uuid())
-                .map(PlayerIdentity::name).orElse("Owner");
-        source.sendFeedback("Owner: " + ownerName);
+                .map(PlayerIdentity::name).orElseGet(() ->
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.owner"));
+        source.sendFeedbackKey("commands.membership.owner_line", Map.of("owner", ownerName));
         if (realm.members().isEmpty()) {
-            source.sendFeedback("Members: none");
+            source.sendFeedbackKey("commands.membership.members_none");
         } else {
-            source.sendFeedback("Members:");
-            realm.members().forEach(uuid -> source.sendFeedback("- " + players.cached(source, uuid)
-                    .map(PlayerIdentity::name).orElse("Unknown cached member")));
+            source.sendFeedbackKey("commands.membership.members_title");
+            realm.members().forEach(uuid -> source.sendFeedbackKey("common.list_item",
+                    Map.of("item", players.cached(source, uuid).map(PlayerIdentity::name).orElseGet(() ->
+                            eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                                    "commands.membership.unknown_member")))));
         }
         return 1;
     }
@@ -268,13 +269,13 @@ public final class RealmMembershipCommandModule {
         if (runtime == null || owner == null) return 0;
         MembershipResult result = runtime.setAccess(owner.uuid(), policy);
         if (result.status() == MembershipStatus.NO_CHANGE) {
-            source.sendFeedback("Realm access is already " + displayPolicy(policy) + ".");
+            source.sendFeedbackKey("commands.membership.access_unchanged",
+                    Map.of("access", displayPolicy(policy)));
             return 1;
         }
         if (!result.succeeded()) return membershipError(source, result);
-        messages.send(source, "Realm access changed to {access}.",
-                Map.of("access", displayPolicy(policy)),
-                "Realm access changed to " + displayPolicy(policy) + ".");
+        messages.sendLocalized(source, "commands.membership.access_changed",
+                Map.of("access", displayPolicy(policy)));
         return 1;
     }
 
@@ -286,28 +287,27 @@ public final class RealmMembershipCommandModule {
         if (runtime == null || visitor == null) return 0;
         Optional<PlayerIdentity> owner = resolveOwner(source, runtime, players, ownerName);
         if (owner.isEmpty()) {
-            source.sendError("Unknown cached realm owner.");
+            source.sendErrorKey("errors.realm_owner_unknown");
             return 0;
         }
         RealmVisitService.Decision decision = runtime.evaluateVisit(visitor.uuid(), owner.orElseThrow().uuid());
         if (!decision.allowed()) {
             if (decision.status() == RealmVisitService.Status.REALM_NOT_ACTIVE
                     || decision.status() == RealmVisitService.Status.TARGET_NOT_FOUND) {
-                source.sendError("That realm is not active.");
+                source.sendErrorKey("errors.realm_not_active");
             } else {
                 String detail = decision.accessDecision().map(access -> access.reason().toString())
                         .orElse("ACCESS_DENIED");
-                source.sendError("You cannot visit that realm: " + detail);
+                source.sendErrorKey("commands.membership.errors.visit_denied", Map.of("detail", detail));
             }
             return 0;
         }
         TeleportResult teleport = runtime.visit(visitor.uuid(), decision.realm().orElseThrow());
         if (teleport != TeleportResult.SUCCESS) {
-            source.sendError("Unable to visit realm: " + teleport);
+            source.sendErrorKey("commands.membership.errors.visit_failed", Map.of("detail", teleport.name()));
             return 0;
         }
-        messages.send(source, "Visiting {owner}'s realm.", Map.of("owner", owner.orElseThrow().name()),
-                "Visiting " + owner.orElseThrow().name() + "'s realm.");
+        messages.sendLocalized(source, "commands.membership.visiting", Map.of("owner", owner.orElseThrow().name()));
         return 1;
     }
 
@@ -348,13 +348,15 @@ public final class RealmMembershipCommandModule {
     }
 
     private static String memberInspectionError(RealmMemberInspectionService.Status status) {
-        return switch (status) {
-            case TARGET_NOT_FOUND -> "Unknown cached realm owner.";
-            case NO_REALM -> "You do not own or belong to a realm.";
-            case AMBIGUOUS_MEMBERSHIP -> "You belong to multiple realms; use the owner-specific commands.";
-            case NOT_AUTHORIZED -> "Realm membership is private.";
+        String key = switch (status) {
+            case TARGET_NOT_FOUND -> "target_not_found";
+            case NO_REALM -> "no_realm";
+            case AMBIGUOUS_MEMBERSHIP -> "ambiguous_membership";
+            case NOT_AUTHORIZED -> "not_authorized";
             case ALLOWED -> throw new IllegalArgumentException("allowed member inspection is not an error");
         };
+        return eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                "commands.membership.errors.inspection." + key);
     }
 
     private static int membershipError(CommandSource source, MembershipResult result) {
@@ -366,13 +368,13 @@ public final class RealmMembershipCommandModule {
     private static RealmMembershipCommandRuntime requireRuntime(
             CommandSource source, Supplier<? extends RealmMembershipCommandRuntime> runtimeSupplier) {
         RealmMembershipCommandRuntime runtime = runtimeSupplier.get();
-        if (runtime == null) source.sendError("Paradigm Realms has not completed startup.");
+        if (runtime == null) source.sendErrorKey("errors.startup_incomplete");
         return runtime;
     }
 
     private static PlayerReference requirePlayer(CommandSource source) {
         PlayerReference player = source.player().orElse(null);
-        if (player == null) source.sendError("This command can only be used by a player.");
+        if (player == null) source.sendErrorKey("errors.player_only");
         return player;
     }
 
@@ -382,7 +384,8 @@ public final class RealmMembershipCommandModule {
     }
 
     private static String displayPolicy(RealmAccessPolicy policy) {
-        return policy == RealmAccessPolicy.PUBLIC_VISIT ? "public" : "private";
+        return eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                policy == RealmAccessPolicy.PUBLIC_VISIT ? "common.public" : "common.private");
     }
 
     @FunctionalInterface

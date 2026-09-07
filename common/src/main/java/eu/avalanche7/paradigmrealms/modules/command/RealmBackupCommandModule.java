@@ -3,6 +3,7 @@ package eu.avalanche7.paradigmrealms.modules.command;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -232,7 +233,7 @@ public final class RealmBackupCommandModule {
             return 0;
         }
         List<BackupCatalogEntry> backups = runtime.ownBackups(player.uuid());
-        source.sendFeedback("Verified backups for your realm: " + backups.size());
+        source.sendFeedbackKey("commands.backups.own_title", Map.of("count", Integer.toString(backups.size())));
         backups.forEach(entry -> source.sendFeedback(playerSummary(entry)));
         return 1;
     }
@@ -251,7 +252,8 @@ public final class RealmBackupCommandModule {
         return reportAdminRequest(
                 source,
                 runtime.requestAdminBackup(realmId, actorId, actorName),
-                "realm #" + realmId);
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "commands.backups.target_realm", Map.of("realm_id", Long.toString(realmId))));
     }
 
     private static int createForOwner(
@@ -265,11 +267,11 @@ public final class RealmBackupCommandModule {
         }
         PlayerIdentityResolution resolution = players.resolveCached(source, ownerName);
         if (resolution.status() == PlayerIdentityResolution.Status.AMBIGUOUS) {
-            source.sendError("That cached player name is ambiguous; use the realm ID instead.");
+            source.sendErrorKey("commands.backups.errors.owner_ambiguous");
             return 0;
         }
         if (resolution.status() == PlayerIdentityResolution.Status.UNKNOWN) {
-            source.sendError("No cached realm owner has that name.");
+            source.sendErrorKey("commands.backups.errors.owner_unknown");
             return 0;
         }
 
@@ -280,7 +282,8 @@ public final class RealmBackupCommandModule {
         return reportAdminRequest(
                 source,
                 runtime.requestAdminBackupForOwner(owner.uuid(), actorId, actorName),
-                owner.name() + "'s realm");
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "commands.backups.target_owner", Map.of("owner", owner.name())));
     }
 
     private static List<String> ownerSuggestions(
@@ -308,7 +311,7 @@ public final class RealmBackupCommandModule {
         }
         List<Long> realmIds = runtime.backupRealmIds();
         if (realmIds.isEmpty()) {
-            source.sendError("There are no active realms available for backup.");
+            source.sendErrorKey("commands.backups.errors.no_active_realms");
             return 0;
         }
 
@@ -323,9 +326,11 @@ public final class RealmBackupCommandModule {
         }
 
         int rejected = realmIds.size() - queued;
-        source.sendFeedback("Queued backups for " + queued + " of " + realmIds.size() + " active realms.");
+        source.sendFeedbackKey("commands.backups.queued_all", Map.of(
+                "queued", Integer.toString(queued), "total", Integer.toString(realmIds.size())));
         if (rejected > 0) {
-            source.sendError(rejected + " realms were busy or the backup queue was full. Check backup status and retry.");
+            source.sendErrorKey("commands.backups.errors.queued_all_rejected",
+                    Map.of("count", Integer.toString(rejected)));
         }
         return queued > 0 ? 1 : 0;
     }
@@ -338,13 +343,17 @@ public final class RealmBackupCommandModule {
             return 0;
         }
         var status = runtime.backupStatus();
-        source.sendFeedback("Realm backups: " + status.catalogSize() + " verified, "
-                + status.queueLength() + " queued, " + status.activeLocks() + " capture locks");
-        source.sendFeedback("Active: " + status.activeOperation()
-                .map(operation -> "realm " + operation.realmId() + " (" + friendlyState(operation.state()) + ")")
-                .orElse("none"));
-        source.sendFeedback("Next automatic backup due: "
-                + status.nextDue().map(Object::toString).orElse("not scheduled"));
+        source.sendFeedbackKey("commands.backups.status", Map.of(
+                "verified", Integer.toString(status.catalogSize()), "queued", Integer.toString(status.queueLength()),
+                "locks", Integer.toString(status.activeLocks())));
+        source.sendFeedbackKey("commands.backups.active", Map.of("active", status.activeOperation()
+                .map(operation -> eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "commands.backups.active_realm", Map.of("realm_id", Long.toString(operation.realmId()),
+                                "state", friendlyState(operation.state()))))
+                .orElseGet(() -> eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.none"))));
+        source.sendFeedbackKey("commands.backups.next_due", Map.of("time",
+                status.nextDue().map(Object::toString).orElseGet(() ->
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.not_scheduled"))));
         return 1;
     }
 
@@ -359,7 +368,7 @@ public final class RealmBackupCommandModule {
         List<BackupCatalogEntry> backups = realmId
                 .map(runtime::backupsForRealm)
                 .orElseGet(runtime::backups);
-        source.sendFeedback("Backup catalog entries: " + backups.size());
+        source.sendFeedbackKey("commands.backups.catalog_title", Map.of("count", Integer.toString(backups.size())));
         backups.forEach(entry -> source.sendFeedback(adminSummary(entry)));
         return 1;
     }
@@ -375,16 +384,18 @@ public final class RealmBackupCommandModule {
         }
         BackupCatalogEntry entry = runtime.backup(backupId).orElse(null);
         if (entry == null) {
-            source.sendError("No backup exists with that ID.");
+            source.sendErrorKey("commands.backups.errors.not_found");
             return 0;
         }
         source.sendFeedback(adminSummary(entry));
-        source.sendFeedback("Integrity: " + friendlyIntegrity(entry.integrityStatus())
-                + " | reason: " + friendlyReason(entry.reason())
-                + " | pinned: " + (entry.pinned() ? "yes" : "no"));
-        source.sendFeedback("Allocation profile: " + entry.allocationProfile()
-                + " | strategy: " + entry.strategy());
-        source.sendFeedback("Captured payload files: " + entry.payloadFileCount());
+        source.sendFeedbackKey("commands.backups.info_integrity", Map.of(
+                "integrity", friendlyIntegrity(entry.integrityStatus()), "reason", friendlyReason(entry.reason()),
+                "pinned", eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        entry.pinned() ? "common.yes" : "common.no")));
+        source.sendFeedbackKey("commands.backups.info_allocation", Map.of(
+                "profile", entry.allocationProfile().toString(), "strategy", entry.strategy().name()));
+        source.sendFeedbackKey("commands.backups.info_files",
+                Map.of("count", Integer.toString(entry.payloadFileCount())));
         return 1;
     }
 
@@ -397,15 +408,16 @@ public final class RealmBackupCommandModule {
         if (runtime == null || backupId == null) {
             return 0;
         }
-        source.sendFeedback("Verifying backup " + backupId.value() + "...");
+        source.sendFeedbackKey("commands.backups.verifying", Map.of("backup_id", backupId.value()));
         runtime.verifyBackup(backupId).whenComplete((result, failure) ->
                 source.executeOnServerThread(() -> {
                     if (failure != null) {
-                        source.sendError("The backup could not be verified. Check the server log for details.");
+                        source.sendErrorKey("commands.backups.errors.verify_exception");
                     } else if (result.valid()) {
-                        source.sendFeedback("Backup verification completed successfully.");
+                        source.sendFeedbackKey("commands.backups.verify_success");
                     } else {
-                        source.sendError("Backup verification failed: " + String.join("; ", result.failures()));
+                        source.sendErrorKey("commands.backups.errors.verify_failed",
+                                Map.of("failures", String.join("; ", result.failures())));
                     }
                 }));
         return 1;
@@ -426,12 +438,10 @@ public final class RealmBackupCommandModule {
                 pinned,
                 actorUuid(source),
                 source.name())) {
-            source.sendError("The backup could not be found or the catalog update failed.");
+            source.sendErrorKey("commands.backups.errors.catalog_update_failed");
             return 0;
         }
-        source.sendFeedback(pinned
-                ? "Backup pinned. Automatic retention will preserve it."
-                : "Backup unpinned. Normal retention rules now apply.");
+        source.sendFeedbackKey(pinned ? "commands.backups.pinned" : "commands.backups.unpinned");
         return 1;
     }
 
@@ -443,7 +453,7 @@ public final class RealmBackupCommandModule {
             return 0;
         }
         int queued = runtime.runDueBackups();
-        source.sendFeedback("Queued " + queued + " due realm backup(s).");
+        source.sendFeedbackKey("commands.backups.due_queued", Map.of("count", Integer.toString(queued)));
         return 1;
     }
 
@@ -459,12 +469,12 @@ public final class RealmBackupCommandModule {
 
         var result = runtime.requestBackupDeletion(backupId, actorUuid(source));
         if (result.confirmationToken().isEmpty()) {
-            source.sendError(result.message());
+            source.sendErrorKey("common.detail", Map.of("detail", result.message()));
             return 0;
         }
-        source.sendFeedback(result.message());
-        source.sendFeedback("/realms admin backups delete confirm "
-                + result.confirmationToken().orElseThrow());
+        source.sendFeedbackKey("common.detail", Map.of("detail", result.message()));
+        source.sendFeedbackKey("commands.backups.delete_confirm",
+                Map.of("token", result.confirmationToken().orElseThrow()));
         return 1;
     }
 
@@ -479,10 +489,10 @@ public final class RealmBackupCommandModule {
 
         var result = runtime.confirmBackupDeletion(token, actorUuid(source));
         if (!result.successful()) {
-            source.sendError(result.message());
+            source.sendErrorKey("common.detail", Map.of("detail", result.message()));
             return 0;
         }
-        source.sendFeedback(result.message());
+        source.sendFeedbackKey("common.detail", Map.of("detail", result.message()));
         return 1;
     }
 
@@ -499,7 +509,7 @@ public final class RealmBackupCommandModule {
         PlayerReference actor = source.player().orElse(null);
         java.util.UUID actorId = actor == null ? new java.util.UUID(0, 0) : actor.uuid();
         String actorName = actor == null ? source.name() : actor.name();
-        source.sendFeedback("Verifying the backup and creating a rollback backup of the current realm...");
+        source.sendFeedbackKey("commands.backups.restore_preparing");
         runtime.prepareBackupRestore(
                         backupId,
                         eu.avalanche7.paradigmrealms.backup.RestoreMode.WORLD_ONLY,
@@ -507,17 +517,18 @@ public final class RealmBackupCommandModule {
                         actorName)
                 .whenComplete((result, failure) -> source.executeOnServerThread(() -> {
                     if (failure != null) {
-                        source.sendError("Restore preparation failed safely. The target realm was not changed.");
+                        source.sendErrorKey("commands.backups.errors.restore_prepare_failed");
                         return;
                     }
                     if (result.status()
                             != eu.avalanche7.paradigmrealms.backup.RestorePreparationResult.Status.PREPARED) {
-                        source.sendError(result.message());
+                        source.sendErrorKey("common.detail", Map.of("detail", result.message()));
                         return;
                     }
-                    source.sendFeedback(result.message());
-                    source.sendFeedback("Operation ID: " + result.operationId().orElseThrow());
-                    source.sendFeedback("Run the documented realm-backup-tool command only after the server stops.");
+                    source.sendFeedbackKey("common.detail", Map.of("detail", result.message()));
+                    source.sendFeedbackKey("commands.backups.operation_id",
+                            Map.of("operation_id", result.operationId().orElseThrow().toString()));
+                    source.sendFeedbackKey("commands.backups.restore_tool_instruction");
                 }));
         return 1;
     }
@@ -532,10 +543,10 @@ public final class RealmBackupCommandModule {
             return 0;
         }
         if (!runtime.cancelBackupRestore(backupId)) {
-            source.sendError("No prepared restore for that backup can be cancelled safely.");
+            source.sendErrorKey("commands.backups.errors.restore_cancel_missing");
             return 0;
         }
-        source.sendFeedback("Prepared restore cancelled. The realm is open again.");
+        source.sendFeedbackKey("commands.backups.restore_cancelled");
         return 1;
     }
 
@@ -550,14 +561,14 @@ public final class RealmBackupCommandModule {
         var result = run
                 ? runtime.runBackupPrune(actorUuid(source), source.name())
                 : runtime.previewBackupPrune();
-        source.sendFeedback((run ? "Pruned " : "Would prune ")
-                + result.selected().size() + " backup(s), reclaiming "
-                + humanBytes(result.reclaimableBytes()) + '.');
-        result.selected().forEach(entry -> source.sendFeedback(
-                entry.backupId().value() + " | realm " + entry.realmId()
-                        + " | " + entry.createdAt()));
+        source.sendFeedbackKey(run ? "commands.backups.pruned" : "commands.backups.prune_preview", Map.of(
+                "count", Integer.toString(result.selected().size()),
+                "size", humanBytes(result.reclaimableBytes())));
+        result.selected().forEach(entry -> source.sendFeedbackKey("commands.backups.prune_line", Map.of(
+                "backup_id", entry.backupId().value(), "realm_id", Long.toString(entry.realmId()),
+                "created_at", entry.createdAt().toString())));
         if (!result.storageLimitsSatisfied()) {
-            source.sendError("Storage limits cannot be satisfied without deleting protected backups.");
+            source.sendErrorKey("commands.backups.errors.storage_limits");
         }
         return 1;
     }
@@ -569,8 +580,8 @@ public final class RealmBackupCommandModule {
         if (runtime == null) {
             return 0;
         }
-        source.sendFeedback("Catalog contains " + runtime.backups().size()
-                + " indexed backup(s). Use verify <backupId> for archive integrity.");
+        source.sendFeedbackKey("commands.backups.catalog_validated",
+                Map.of("count", Integer.toString(runtime.backups().size())));
         return 1;
     }
 
@@ -583,24 +594,28 @@ public final class RealmBackupCommandModule {
         }
         var result = runtime.rebuildBackupCatalog(actorUuid(source), source.name());
         if (!result.successful()) {
-            source.sendError("The backup catalog could not be rebuilt. Existing archives were not deleted.");
+            source.sendErrorKey("commands.backups.errors.catalog_rebuild_failed");
             return 0;
         }
-        source.sendFeedback("Backup catalog rebuilt: " + result.catalogEntries()
-                + " valid backup(s) from " + result.scannedArchives() + " archive(s).");
-        result.warnings().forEach(warning -> source.sendError("Catalog warning: " + warning));
+        source.sendFeedbackKey("commands.backups.catalog_rebuilt", Map.of(
+                "backups", Integer.toString(result.catalogEntries()),
+                "archives", Integer.toString(result.scannedArchives())));
+        result.warnings().forEach(warning -> source.sendErrorKey("commands.backups.catalog_warning",
+                Map.of("warning", warning)));
         return 1;
     }
 
     private static int reportRequest(CommandSource source, BackupRequestResult result) {
         if (!result.accepted()) {
-            source.sendError(result.message());
+            source.sendErrorKey("common.detail", Map.of("detail", result.message()));
             result.cooldownRemaining().ifPresent(remaining ->
-                    source.sendFeedback("Try again in " + duration(remaining) + '.'));
+                    source.sendFeedbackKey("commands.backups.try_again",
+                            Map.of("duration", duration(remaining))));
             return 0;
         }
-        source.sendFeedback(result.message());
-        source.sendFeedback("Queue position: " + result.queuePosition());
+        source.sendFeedbackKey("common.detail", Map.of("detail", result.message()));
+        source.sendFeedbackKey("commands.backups.queue_position",
+                Map.of("position", Integer.toString(result.queuePosition())));
         return 1;
     }
 
@@ -609,10 +624,11 @@ public final class RealmBackupCommandModule {
             BackupRequestResult result,
             String target) {
         if (!result.accepted()) {
-            source.sendError(result.message());
+            source.sendErrorKey("common.detail", Map.of("detail", result.message()));
             return 0;
         }
-        source.sendFeedback("Backup of " + target + " queued. Position: " + result.queuePosition() + '.');
+        source.sendFeedbackKey("commands.backups.admin_queued", Map.of(
+                "target", target, "position", Integer.toString(result.queuePosition())));
         return 1;
     }
 
@@ -620,48 +636,59 @@ public final class RealmBackupCommandModule {
         try {
             return new BackupId(value);
         } catch (IllegalArgumentException exception) {
-            source.sendError("That backup ID is not valid.");
+            source.sendErrorKey("commands.backups.errors.invalid_id");
             return null;
         }
     }
 
     private static String playerSummary(BackupCatalogEntry entry) {
-        return entry.createdAt() + " | " + friendlyReason(entry.reason())
-                + " | " + humanBytes(entry.sizeBytes());
+        return eu.avalanche7.paradigmrealms.message.PlayerMessages.text("commands.backups.player_summary", Map.of(
+                "created_at", entry.createdAt().toString(), "reason", friendlyReason(entry.reason()),
+                "size", humanBytes(entry.sizeBytes())));
     }
 
     private static String adminSummary(BackupCatalogEntry entry) {
-        return entry.backupId().value() + " | realm " + entry.realmId()
-                + " | " + entry.ownerNameSnapshot() + " | " + entry.createdAt()
-                + " | " + humanBytes(entry.sizeBytes());
+        return eu.avalanche7.paradigmrealms.message.PlayerMessages.text("commands.backups.admin_summary", Map.of(
+                "backup_id", entry.backupId().value(), "realm_id", Long.toString(entry.realmId()),
+                "owner", entry.ownerNameSnapshot(), "created_at", entry.createdAt().toString(),
+                "size", humanBytes(entry.sizeBytes())));
     }
 
     private static String friendlyState(eu.avalanche7.paradigmrealms.backup.BackupLifecycleState state) {
-        return state.name().toLowerCase(Locale.ROOT).replace('_', ' ');
+        return eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                "backup_states." + state.name().toLowerCase(Locale.ROOT));
     }
 
     private static String friendlyIntegrity(
             eu.avalanche7.paradigmrealms.backup.BackupIntegrityStatus status) {
-        return status.name().toLowerCase(Locale.ROOT).replace('_', ' ');
+        return eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                "backup_integrity." + status.name().toLowerCase(Locale.ROOT));
     }
 
     private static String friendlyReason(eu.avalanche7.paradigmrealms.backup.BackupReason reason) {
-        return reason.name().toLowerCase(Locale.ROOT).replace('_', ' ');
+        return eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                "backup_reasons." + reason.name().toLowerCase(Locale.ROOT));
     }
 
     private static String duration(Duration value) {
         long minutes = Math.max(1, value.toMinutes());
-        return minutes == 1 ? "1 minute" : minutes + " minutes";
+        return eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                minutes == 1 ? "common.minute" : "common.minutes",
+                Map.of("minutes", Long.toString(minutes)));
     }
 
     private static String humanBytes(long bytes) {
         if (bytes < 1024) {
-            return bytes + " B";
+            return eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                    "common.bytes", Map.of("value", Long.toString(bytes)));
         }
         if (bytes < 1024L * 1024L) {
-            return String.format(Locale.ROOT, "%.1f KiB", bytes / 1024.0);
+            return eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                    "common.kibibytes", Map.of("value", String.format(Locale.ROOT, "%.1f", bytes / 1024.0)));
         }
-        return String.format(Locale.ROOT, "%.1f MiB", bytes / (1024.0 * 1024.0));
+        return eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                "common.mebibytes", Map.of("value",
+                        String.format(Locale.ROOT, "%.1f", bytes / (1024.0 * 1024.0))));
     }
 
     private static RealmBackupCommandRuntime requireRuntime(
@@ -669,7 +696,7 @@ public final class RealmBackupCommandModule {
             Supplier<? extends RealmBackupCommandRuntime> supplier) {
         RealmBackupCommandRuntime runtime = supplier.get();
         if (runtime == null) {
-            source.sendError("Paradigm Realms has not completed server startup.");
+            source.sendErrorKey("errors.startup_incomplete");
         }
         return runtime;
     }
@@ -677,7 +704,7 @@ public final class RealmBackupCommandModule {
     private static PlayerReference requirePlayer(CommandSource source) {
         PlayerReference player = source.player().orElse(null);
         if (player == null) {
-            source.sendError("This command can only be used by a player.");
+            source.sendErrorKey("errors.player_only");
         }
         return player;
     }

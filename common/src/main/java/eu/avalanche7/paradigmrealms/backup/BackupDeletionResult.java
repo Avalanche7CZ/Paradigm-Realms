@@ -15,12 +15,13 @@ public record BackupDeletionResult(
     public static BackupDeletionResult confirmation(String token) {
         return new BackupDeletionResult(
                 false,
-                "Confirm this backup deletion with the scoped token below.",
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("backup_results.delete_confirmation"),
                 Optional.of(token));
     }
 
     public static BackupDeletionResult completed() {
-        return new BackupDeletionResult(true, "Backup deleted.", Optional.empty());
+        return new BackupDeletionResult(true,
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("backup_results.deleted"), Optional.empty());
     }
 
     public static BackupDeletionResult failed(String message) {

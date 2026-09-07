@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import eu.avalanche7.paradigmrealms.backup.BackupCellBounds;
 import eu.avalanche7.paradigmrealms.domain.DimensionId;
 import eu.avalanche7.paradigmrealms.message.RealmMessageKey;
+import eu.avalanche7.paradigmrealms.platform.message.CommandMessenger;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
@@ -17,9 +18,11 @@ public final class RealmBackupMutationLocks {
     private final Map<Long, ActiveLock> locks = new ConcurrentHashMap<>();
     private final Map<UUID, Long> lastNotification = new ConcurrentHashMap<>();
     private final long notificationCooldownMillis;
+    private final CommandMessenger messages;
 
-    public RealmBackupMutationLocks(long notificationCooldownMillis) {
+    public RealmBackupMutationLocks(long notificationCooldownMillis, CommandMessenger messages) {
         this.notificationCooldownMillis = notificationCooldownMillis;
+        this.messages = java.util.Objects.requireNonNull(messages, "messages");
     }
 
     public Optional<Handle> tryAcquire(long realmId, BackupCellBounds bounds, UUID operationId) {
@@ -64,7 +67,7 @@ public final class RealmBackupMutationLocks {
         Long previous = lastNotification.put(player.getUuid(), now);
         if (previous == null || now - previous >= notificationCooldownMillis) {
             player.sendMessage(
-                    Text.literal(RealmMessageKey.BACKUP_LOCKED.fallback(Map.of())),
+                    Text.literal(messages.translate(RealmMessageKey.BACKUP_LOCKED.key(), Map.of())),
                     true);
         }
         return false;

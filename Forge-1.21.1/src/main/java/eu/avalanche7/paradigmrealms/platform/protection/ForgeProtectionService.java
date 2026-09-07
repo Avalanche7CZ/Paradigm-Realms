@@ -129,7 +129,8 @@ public final class ForgeProtectionService {
         long now = System.currentTimeMillis();
         Long previous = lastDenial.put(player.getUuid(), now);
         if (previous == null || now - previous >= denialCooldownMillis) {
-            player.sendMessage(Text.literal("That action is blocked by Wilds lifecycle or spawn protection."), true);
+            player.sendMessage(Text.literal(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                    "protection.wilds_blocked")), true);
         }
     }
 
@@ -161,7 +162,8 @@ public final class ForgeProtectionService {
         boolean bypassActive = online != null && bypass.enabled(online.getUuid());
         if (target instanceof ServerPlayerEntity && !bypassActive
                 && !policy.pvpAllowed(index.get(), coordinate(target.getBlockPos()))) {
-            if (online != null) online.sendMessage(Text.literal("PvP is disabled in this realm."), true);
+            if (online != null) online.sendMessage(Text.literal(
+                    eu.avalanche7.paradigmrealms.message.PlayerMessages.text("protection.pvp_disabled")), true);
             return false;
         }
         ForgeWildsService wildsService = wilds;

@@ -211,7 +211,8 @@ public final class ForgeWildsService {
                 server, config.generationProfile()).isEmpty();
         WildsActionResult result = schedule.schedule(when, profileValid);
         if (result == WildsActionResult.SUCCESS) {
-            broadcast("Only Wilds will reset at " + when + "; personal realms are unaffected.");
+            broadcast(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                    "wilds.reset_scheduled", Map.of("time", when.toString())));
         }
         return result;
     }
@@ -219,7 +220,7 @@ public final class ForgeWildsService {
     public WildsActionResult cancelReset() {
         WildsActionResult result = schedule.cancel();
         if (result == WildsActionResult.SUCCESS) {
-            broadcast("The scheduled Wilds reset was cancelled.");
+            broadcast(eu.avalanche7.paradigmrealms.message.PlayerMessages.text("wilds.reset_cancelled"));
         }
         return result;
     }
@@ -402,7 +403,7 @@ public final class ForgeWildsService {
         WildsBootContext.persistActive(worldRoot(), operation.targetSeed(), operation.targetProfile());
         manifests.write(worldRoot(), manifest.withStage(WildsManifestStage.COMPLETED, Instant.now()));
         scheduleRecurringIfRequired();
-        broadcast("Wilds reset completed. Personal realms were not changed.");
+        broadcast(eu.avalanche7.paradigmrealms.message.PlayerMessages.text("wilds.reset_completed"));
         ParadigmRealms.LOGGER.info("Wilds reset {} completed at epoch {} with verified seed {}",
                 operation.operationId(), operation.targetEpoch(), operation.targetSeed());
         if (operation.settings().deleteOldBackupsAfterVerification()) {
@@ -474,7 +475,7 @@ public final class ForgeWildsService {
             manifests.write(root, manifest);
             lifecycle.markOfflinePending();
             store.flush();
-            broadcast("Wilds is saved and ready for an offline reset. Stop the server and run the reset tool.");
+            broadcast(eu.avalanche7.paradigmrealms.message.PlayerMessages.text("wilds.offline_reset_ready"));
             ParadigmRealms.LOGGER.warn("Wilds reset {} is OFFLINE_RESET_PENDING. Run the offline reset tool after shutdown.",
                     operation.operationId());
             if (operation.settings().shutdownWhenPrepared()) server.stop(false);
@@ -490,7 +491,8 @@ public final class ForgeWildsService {
     private void tickSchedule() {
         var tick = schedule.tick();
         tick.crossedWarningsSeconds().forEach(seconds -> broadcast(
-                "Wilds resets in " + seconds + " seconds. Personal realms are unaffected."));
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "wilds.reset_warning", Map.of("seconds", Long.toString(seconds)))));
         if (tick.resetDue()) prepareReset();
     }
 
@@ -540,11 +542,13 @@ public final class ForgeWildsService {
             Optional<eu.avalanche7.paradigmrealms.domain.realm.Realm> owned = realms.repository().findByOwner(player.getUuid());
             if (owned.isPresent() && owned.orElseThrow().state() == RealmLifecycleState.ACTIVE
                     && realms.teleportHome(player, owned.orElseThrow()) == TeleportResult.SUCCESS) {
-                player.sendMessage(Text.literal("You were evacuated from Wilds to your personal realm (" + reason + ")."), false);
+                player.sendMessage(Text.literal(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "wilds.evacuated_realm", Map.of("reason", reason))), false);
                 return;
             }
             if (realms.teleports().teleportToOverworldSpawn(player.getUuid()) == TeleportResult.SUCCESS) {
-                player.sendMessage(Text.literal("You were evacuated from Wilds to the Overworld (" + reason + ")."), false);
+                player.sendMessage(Text.literal(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "wilds.evacuated_overworld", Map.of("reason", reason))), false);
                 return;
             }
             ParadigmRealms.LOGGER.error("Could not evacuate player {} from Wilds: {}", player.getUuid(), reason);

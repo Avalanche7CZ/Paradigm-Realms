@@ -31,7 +31,7 @@ public record RestorePreparationResult(
                 Status.PREPARED,
                 Optional.of(operationId),
                 Optional.of(rollbackBackupId),
-                "Offline restore prepared. Stop the server before running the restore tool.");
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("backup_results.restore_prepared"));
     }
 
     public enum Status {

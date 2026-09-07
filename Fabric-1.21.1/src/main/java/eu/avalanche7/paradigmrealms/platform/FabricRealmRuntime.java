@@ -95,7 +95,7 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
         this.presets = presets;
         this.audit = createAudit(server, config.auditRetentionDays());
         this.bypass = new RealmSessionBypass();
-        this.backupLocks = new RealmBackupMutationLocks(config.denialMessageCooldownMillis());
+        this.backupLocks = new RealmBackupMutationLocks(config.denialMessageCooldownMillis(), messages);
         this.protection = new FabricProtectionService(
                 bypass,
                 config.denialMessageCooldownMillis(),
@@ -250,7 +250,7 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
                 playerActor(owner),
                 successful -> {
                     if (!successful && config.realmBackups().preOperation().requireSuccessfulBackupForReset()) {
-                        notifyPreOperationFailure(owner, "Your realm was not recreated because its safety backup failed.");
+                        notifyPreOperationFailure(owner, "realm_lifecycle.reset_backup_failed");
                         return;
                     }
                     var result = lifecycleResult(common.executeReset(owner, preset));
@@ -259,9 +259,9 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
                             == eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.RESET_COMPLETED) {
                         result.replacement().ifPresent(replacement ->
                                 common.teleports().teleportToRealm(owner, replacement));
-                        notifyPlayer(owner, "Realm reset completed. Your previous realm is archived.");
+                        notifyPlayer(owner, "realm_lifecycle.reset_completed");
                     } else {
-                        notifyPlayer(owner, "Your realm could not be recreated. Your original realm is still active.");
+                        notifyPlayer(owner, "realm_lifecycle.reset_failed_preserved");
                     }
                 });
         if (!request.accepted()
@@ -286,7 +286,7 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
                 playerActor(owner),
                 successful -> {
                     if (!successful && config.realmBackups().preOperation().requireSuccessfulBackupForDelete()) {
-                        notifyPreOperationFailure(owner, "Your realm was not archived because its safety backup failed.");
+                        notifyPreOperationFailure(owner, "realm_lifecycle.archive_backup_failed");
                         return;
                     }
                     var result = lifecycleResult(common.executeDelete(owner));
@@ -294,9 +294,9 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
                             result.source().map(Realm::id), true);
                     if (result.status()
                             == eu.avalanche7.paradigmrealms.application.RealmLifecycleManagementService.Status.ARCHIVED) {
-                        notifyPlayer(owner, "Realm archived. Its blocks and allocation remain protected.");
+                        notifyPlayer(owner, "realm_lifecycle.archived");
                     } else {
-                        notifyPlayer(owner, "Your realm could not be archived. It remains active.");
+                        notifyPlayer(owner, "realm_lifecycle.archive_failed_active");
                     }
                 });
         if (!request.accepted()
@@ -335,17 +335,18 @@ public final class FabricRealmRuntime implements RealmsCommandRuntime {
                 .orElse("UnknownPlayer");
     }
 
-    private void notifyPreOperationFailure(UUID player, String message) {
-        notifyPlayer(player, message);
+    private void notifyPreOperationFailure(UUID player, String key) {
+        notifyPlayer(player, key);
         eu.avalanche7.paradigmrealms.ParadigmRealms.LOGGER.warn(
                 "Required pre-operation realm backup failed for {}",
                 player);
     }
 
-    private void notifyPlayer(UUID player, String message) {
+    private void notifyPlayer(UUID player, String key) {
         ServerPlayerEntity online = online(player);
         if (online != null) {
-            online.sendMessage(net.minecraft.text.Text.literal(message), false);
+            online.sendMessage(net.minecraft.text.Text.literal(
+                    eu.avalanche7.paradigmrealms.message.PlayerMessages.text(key)), false);
         }
     }
 

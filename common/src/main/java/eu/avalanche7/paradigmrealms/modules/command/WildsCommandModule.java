@@ -124,7 +124,7 @@ public final class WildsCommandModule {
             Supplier<? extends WildsCommandRuntime> runtimeSupplier,
             PlayerAction action) {
         WildsCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
-        PlayerReference player = requirePlayer(source, "This command can only be used by a player.");
+        PlayerReference player = requirePlayer(source, "errors.player_only");
         if (runtime == null || player == null) return 0;
         WildsActionResult value = switch (action) {
             case ENTER -> runtime.enterWilds(player.uuid());
@@ -141,18 +141,19 @@ public final class WildsCommandModule {
         WildsCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         if (runtime == null) return 0;
         var state = runtime.wildsState();
-        String profile = state.activeProfile().map(Object::toString).orElse("none");
-        String next = state.nextScheduledReset().map(Object::toString).orElse("not scheduled");
+        String profile = state.activeProfile().map(Object::toString).orElseGet(() ->
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.none"));
+        String next = state.nextScheduledReset().map(Object::toString).orElseGet(() ->
+                eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.not_scheduled"));
         String cooldown = source.player()
-                .map(player -> runtime.wildsCooldownRemaining(player.uuid()).toSeconds() + "s")
-                .orElse("n/a");
-        messages.send(source,
-                "<color:aqua>Wilds</color>: {state}, epoch {epoch}, profile {profile}",
-                Map.of("state", state.lifecycle().name(), "epoch", Long.toString(state.activeEpoch()),
-                        "profile", profile),
-                "Wilds: " + state.lifecycle() + ", entry=" + state.lifecycle().entryOpen()
-                        + ", epoch=" + state.activeEpoch() + ", profile=" + profile
-                        + ", nextReset=" + next + ", rtpCooldown=" + cooldown);
+                .map(player -> eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "common.seconds", Map.of("seconds", Long.toString(
+                                runtime.wildsCooldownRemaining(player.uuid()).toSeconds()))))
+                .orElseGet(() -> eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.not_available"));
+        messages.sendLocalized(source, "commands.wilds.status",
+                Map.of("state", state.lifecycle().name(), "entry", Boolean.toString(state.lifecycle().entryOpen()),
+                        "epoch", Long.toString(state.activeEpoch()), "profile", profile,
+                        "next_reset", next, "cooldown", cooldown));
         return 1;
     }
 
@@ -161,14 +162,18 @@ public final class WildsCommandModule {
         WildsCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         if (runtime == null) return 0;
         var state = runtime.wildsState();
-        source.sendFeedback("Wilds state=" + state.lifecycle() + " entryOpen="
-                + state.lifecycle().entryOpen() + " verified=" + state.generationVerified()
-                + " epoch=" + state.activeEpoch()
-                + " profile=" + state.activeProfile().map(Object::toString).orElse("not set")
-                + " nextReset=" + state.nextScheduledReset().map(Object::toString).orElse("not scheduled")
-                + " operation=" + state.operation().map(value -> value.operationId().toString()).orElse("none"));
-        state.failure().ifPresent(failure -> source.sendError(
-                "Failure " + failure.code() + ": " + failure.detail()));
+        source.sendFeedbackKey("commands.wilds.admin_status", Map.of(
+                "state", state.lifecycle().name(), "entry", Boolean.toString(state.lifecycle().entryOpen()),
+                "verified", Boolean.toString(state.generationVerified()),
+                "epoch", Long.toString(state.activeEpoch()),
+                "profile", state.activeProfile().map(Object::toString).orElseGet(() ->
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.not_set")),
+                "next_reset", state.nextScheduledReset().map(Object::toString).orElseGet(() ->
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.not_scheduled")),
+                "operation", state.operation().map(value -> value.operationId().toString()).orElseGet(() ->
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.none"))));
+        state.failure().ifPresent(failure -> source.sendErrorKey("commands.wilds.failure",
+                Map.of("code", failure.code(), "detail", failure.detail())));
         return 1;
     }
 
@@ -177,17 +182,17 @@ public final class WildsCommandModule {
         if (runtime == null) return 0;
         var issues = runtime.wildsValidationIssues();
         if (issues.isEmpty()) {
-            source.sendFeedback("Wilds generation, seed, spawn and state are valid.");
+            source.sendFeedbackKey("commands.wilds.valid");
             return 1;
         }
-        issues.forEach(source::sendError);
+        issues.forEach(issue -> source.sendErrorKey("common.detail", Map.of("detail", issue)));
         return 0;
     }
 
     private static int setSpawn(CommandSource source, Supplier<? extends WildsCommandRuntime> runtimeSupplier) {
         WildsCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         PlayerReference player = requirePlayer(
-                source, "Setspawn requires an administrator player inside Wilds.");
+                source, "commands.wilds.errors.setspawn_player_required");
         return runtime == null || player == null ? 0 : result(source, runtime.setWildsSpawn(player.uuid()));
     }
 
@@ -199,11 +204,13 @@ public final class WildsCommandModule {
         WildsCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         if (runtime == null) return 0;
         try {
-            source.sendFeedback("Wilds terrain sample at " + x + "," + z + ": "
-                    + runtime.wildsTerrainSample(x, z));
+            source.sendFeedbackKey("commands.wilds.terrain_sample", Map.of(
+                    "x", Integer.toString(x), "z", Integer.toString(z),
+                    "sample", runtime.wildsTerrainSample(x, z)));
             return 1;
         } catch (RuntimeException exception) {
-            source.sendError("Terrain sample failed: " + exception.getMessage());
+            source.sendErrorKey("commands.wilds.errors.terrain_sample_failed",
+                    Map.of("detail", String.valueOf(exception.getMessage())));
             return 0;
         }
     }
@@ -215,10 +222,10 @@ public final class WildsCommandModule {
         var issues = runtime.wildsValidationIssues().stream()
                 .filter(value -> value.toLowerCase(java.util.Locale.ROOT).contains("spawn")).toList();
         if (issues.isEmpty()) {
-            source.sendFeedback("Wilds spawn is safe and current.");
+            source.sendFeedbackKey("commands.wilds.spawn_valid");
             return 1;
         }
-        issues.forEach(source::sendError);
+        issues.forEach(issue -> source.sendErrorKey("common.detail", Map.of("detail", issue)));
         return 0;
     }
 
@@ -234,7 +241,8 @@ public final class WildsCommandModule {
             Duration duration = DURATIONS.parse(durationText);
             return result(source, runtime.scheduleWildsReset(clock.instant().plus(duration)));
         } catch (IllegalArgumentException exception) {
-            source.sendError("Invalid duration: " + exception.getMessage());
+            source.sendErrorKey("commands.wilds.errors.invalid_duration",
+                    Map.of("detail", String.valueOf(exception.getMessage())));
             return 0;
         }
     }
@@ -256,15 +264,14 @@ public final class WildsCommandModule {
         WildsCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         if (runtime == null) return 0;
         WildsLifecycleState state = runtime.wildsState().lifecycle();
-        source.sendFeedback("Recovery state: " + state);
+        source.sendFeedbackKey("commands.wilds.recovery_state", Map.of("state", state.name()));
         switch (state) {
-            case RESET_SCHEDULED -> source.sendFeedback("Available: reset cancel, reset prepare");
-            case ENTRY_BLOCKED, EVACUATING -> source.sendFeedback("Available: reset resume");
-            case SAVE_BARRIER, OFFLINE_RESET_PENDING -> source.sendFeedback(
-                    "Stop the server and run the offline Wilds reset tool; entry remains closed.");
-            case VERIFYING, FAILED -> source.sendFeedback(
-                    "Available: reset verify. Offline restore requires the documented reset tool procedure.");
-            default -> source.sendFeedback("No incomplete reset requires recovery.");
+            case RESET_SCHEDULED -> source.sendFeedbackKey("commands.wilds.recovery.scheduled");
+            case ENTRY_BLOCKED, EVACUATING -> source.sendFeedbackKey("commands.wilds.recovery.resume");
+            case SAVE_BARRIER, OFFLINE_RESET_PENDING ->
+                    source.sendFeedbackKey("commands.wilds.recovery.offline_tool");
+            case VERIFYING, FAILED -> source.sendFeedbackKey("commands.wilds.recovery.verify");
+            default -> source.sendFeedbackKey("commands.wilds.recovery.none");
         }
         return 1;
     }
@@ -273,8 +280,8 @@ public final class WildsCommandModule {
         WildsCommandRuntime runtime = requireRuntime(source, runtimeSupplier);
         if (runtime == null) return 0;
         var backups = runtime.wildsBackups();
-        source.sendFeedback("Wilds quarantine backups: " + backups.size());
-        backups.forEach(source::sendFeedback);
+        source.sendFeedbackKey("commands.wilds.backups_title", Map.of("count", Integer.toString(backups.size())));
+        backups.forEach(backup -> source.sendFeedbackKey("common.detail", Map.of("detail", backup)));
         return 1;
     }
 
@@ -283,10 +290,11 @@ public final class WildsCommandModule {
         if (runtime == null) return 0;
         try {
             int count = runtime.pruneWildsBackups();
-            source.sendFeedback("Pruned " + count + " eligible Wilds backup(s).");
+            source.sendFeedbackKey("commands.wilds.backups_pruned", Map.of("count", Integer.toString(count)));
             return 1;
         } catch (IOException exception) {
-            source.sendError("Backup pruning refused: " + exception.getMessage());
+            source.sendErrorKey("commands.wilds.errors.prune_refused",
+                    Map.of("detail", String.valueOf(exception.getMessage())));
             return 0;
         }
     }
@@ -301,10 +309,10 @@ public final class WildsCommandModule {
 
     private static int result(CommandSource source, WildsActionResult result) {
         if (result == WildsActionResult.SUCCESS) {
-            source.sendFeedback("Wilds operation accepted.");
+            source.sendFeedbackKey("commands.wilds.operation_accepted");
             return 1;
         }
-        source.sendError("Wilds operation refused: " + result);
+        source.sendErrorKey("commands.wilds.errors.operation_refused", Map.of("result", result.name()));
         return 0;
     }
 
@@ -313,16 +321,16 @@ public final class WildsCommandModule {
         return permissions.allowed(source, permission);
     }
 
-    private static PlayerReference requirePlayer(CommandSource source, String error) {
+    private static PlayerReference requirePlayer(CommandSource source, String errorKey) {
         PlayerReference player = source.player().orElse(null);
-        if (player == null) source.sendError(error);
+        if (player == null) source.sendErrorKey(errorKey);
         return player;
     }
 
     private static WildsCommandRuntime requireRuntime(
             CommandSource source, Supplier<? extends WildsCommandRuntime> runtimeSupplier) {
         WildsCommandRuntime runtime = runtimeSupplier.get();
-        if (runtime == null) source.sendError("Paradigm Realms has not completed startup.");
+        if (runtime == null) source.sendErrorKey("errors.startup_incomplete");
         return runtime;
     }
 

@@ -8,7 +8,7 @@ base.archivesName = 'paradigm-realms-neoforge-1.21.1'
 
 def resolvedModVersion = version.toString()
 def paradigmApiPath = providers.gradleProperty('paradigmApiPath')
-        .orElse('../Paradigm/common/build/libs/paradigm-api-2.2.4.jar')
+        .orElse('../Paradigm/common/build/libs/paradigm-api-2.3.0-b.jar')
 def paradigmApiFile = rootProject.file(paradigmApiPath.get())
 
 loom {

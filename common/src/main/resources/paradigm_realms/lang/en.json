@@ -1,0 +1,580 @@
+{
+  "common": {
+    "none": "none",
+    "unknown": "unknown",
+    "unknown_owner": "Unknown owner",
+    "not_set": "not set",
+    "not_scheduled": "not scheduled",
+    "not_available": "n/a",
+    "yes": "yes",
+    "no": "no",
+    "on": "on",
+    "off": "off",
+    "on_upper": "ON",
+    "off_upper": "OFF",
+    "enabled_upper": "ENABLED",
+    "disabled_upper": "DISABLED",
+    "public": "public",
+    "private": "private",
+    "owner": "Owner",
+    "detail": "{detail}",
+    "list_item": "- {item}",
+    "list_none": "- none",
+    "accept_button": "[accept]",
+    "visit_button": "[visit]",
+    "suggest_command": "Suggest {command}",
+    "selectable_suffix": " SELECTABLE",
+    "legacy_suffix": " LEGACY",
+    "reason_suffix": " - {reasons}",
+    "seconds": "{seconds}s",
+    "minute": "{minutes} minute",
+    "minutes": "{minutes} minutes",
+    "bytes": "{value} B",
+    "kibibytes": "{value} KiB",
+    "mebibytes": "{value} MiB"
+  },
+  "errors": {
+    "startup_incomplete": "Paradigm Realms is still starting. Try again shortly.",
+    "player_only": "Only a player can use this command.",
+    "player_not_cached": "That player is not available in the identity cache.",
+    "player_name_ambiguous": "That player name is ambiguous.",
+    "realm_id_unknown": "Unknown realm ID.",
+    "realm_owner_unknown": "No realm belongs to that player.",
+    "realm_not_active": "That realm is not active.",
+    "owner_or_manager_required": "You must be the realm owner or a manager.",
+    "membership": {
+      "no_realm": "You do not own a realm.",
+      "realm_not_active": "The realm is not active.",
+      "not_owner": "Only the realm owner can do that.",
+      "owner_target": "The realm owner cannot be the target.",
+      "already_member": "That player is already a member.",
+      "not_member": "That player is not a member.",
+      "invitation_not_found": "No matching invitation was found.",
+      "invitation_expired": "That invitation has expired.",
+      "maximum_members": "This realm has reached its member limit.",
+      "maximum_invitations": "This realm has too many pending invitations.",
+      "banned": "That player is banned from this realm.",
+      "forbidden_target": "That player cannot be targeted.",
+      "operation_in_progress": "A realm operation is already in progress.",
+      "no_change": "Nothing changed.",
+      "generic": "The membership operation failed."
+    },
+    "owner_mutation": {
+      "no_realm": "No manageable realm was found.",
+      "forbidden": "You are not allowed to make that change.",
+      "invalid_target": "That target is invalid.",
+      "not_found": "The requested entry was not found.",
+      "server_locked": "The server is currently locked for this change.",
+      "operation_in_progress": "A realm operation is already in progress.",
+      "changed": "The change could not be completed."
+    },
+    "transfer": {
+      "no_realm": "No realm was found for this transfer.",
+      "not_found": "No matching transfer offer was found.",
+      "invalid_target": "That transfer target is invalid.",
+      "target_owns_realm": "The target already owns a realm.",
+      "target_banned": "The target is banned from this realm.",
+      "lifecycle_conflict": "The realm lifecycle currently blocks transfers.",
+      "transfer_conflict": "Another transfer is already in progress.",
+      "generic": "The ownership transfer failed."
+    },
+    "teleport": {
+      "realm_not_active": "The realm is not active.",
+      "world_unavailable": "The destination world is unavailable.",
+      "outside_bounds": "The destination is outside the realm bounds.",
+      "outside_border": "The destination is outside the world border.",
+      "unsafe": "No safe destination was found.",
+      "riding": "Dismount and remove passengers before teleporting.",
+      "success": "The teleport did not complete."
+    },
+    "protection": {
+      "guard_region": "That action is blocked in the protected guard region.",
+      "unallocated": "That action is blocked in unallocated Realms space.",
+      "not_member": "Only realm members may do that here.",
+      "private": "This realm is private.",
+      "visitor_read_only": "Visitors cannot modify this realm.",
+      "realm_not_active": "This realm is not active.",
+      "boundary": "That action would cross a protected realm boundary.",
+      "generic": "That action is protected."
+    }
+  },
+  "commands": {
+    "realm": {
+      "created": "Realm {realm_id} created with preset {realm_preset}.",
+      "presets": "Available realm presets:",
+      "preset_line": "- {preset}: {description}",
+      "preset_line_default": "- {preset}: {description} (default)",
+      "welcome_home": "Welcome home.",
+      "spawn_updated": "Realm spawn updated.",
+      "info": "Realm {realm_id}: {realm_preset}, {realm_state}",
+      "preset_metadata_unavailable": "The saved preset metadata is currently unavailable.",
+      "left_safely": "You left the visited realm safely.",
+      "reset_requested": "Confirm realm replacement with /realm reset confirm {token}.",
+      "reset_backup_queued": "A safety backup was queued. Confirm again after it completes.",
+      "reset_completed": "Your realm was reset successfully.",
+      "reset_cancelled": "Realm reset cancelled.",
+      "delete_requested": "Confirm realm archival with /realm delete confirm {token}.",
+      "delete_backup_queued": "A safety backup was queued. Confirm again after it completes.",
+      "delete_completed": "Your realm was archived.",
+      "delete_cancelled": "Realm deletion cancelled.",
+      "errors": {
+        "invalid_preset": "Invalid realm preset.",
+        "preset_unavailable": "That preset is unavailable.",
+        "preset_selection": {
+          "player_selection_disabled": "Player preset selection is disabled.",
+          "unknown_preset": "That preset does not exist.",
+          "preset_disabled": "That preset is disabled.",
+          "preset_not_selectable": "That preset cannot be selected by players.",
+          "preset_not_allowed": "That preset is not allowed by this server.",
+          "default_preset_unavailable": "The default realm preset is unavailable.",
+          "selected": "The preset selection failed."
+        },
+        "reset_unavailable": "A realm reset cannot be started right now.",
+        "delete_unavailable": "Realm deletion cannot be started right now.",
+        "already_owned": "You already own a realm.",
+        "no_presets": "No realm presets are available.",
+        "generation_failed": "Realm generation failed. Your previous state was preserved.",
+        "invalid_placement": "The generated realm placement was invalid.",
+        "not_owner": "You do not own a realm.",
+        "read_only": "That realm is currently read-only.",
+        "created_teleport_failed": "The realm was created, but teleporting to it failed.",
+        "reset": {
+          "confirmation_invalid": "The reset confirmation is invalid or expired.",
+          "preset_unavailable": "The selected preset is no longer available.",
+          "operation_in_progress": "Another realm operation is already in progress.",
+          "backup_failed": "The safety backup failed; the reset was not started.",
+          "failed_preserved": "Reset failed; the old realm was preserved.",
+          "no_realm": "No realm exists to reset.",
+          "generic": "The realm reset failed."
+        },
+        "delete": {
+          "confirmation_invalid": "The deletion confirmation is invalid or expired.",
+          "operation_in_progress": "Another realm operation is already in progress.",
+          "backup_failed": "The safety backup failed; the realm was not deleted.",
+          "no_realm": "No realm exists to delete.",
+          "generic": "The realm deletion failed."
+        },
+        "teleport": {
+          "realm_not_active": "Your realm is not active.",
+          "world_unavailable": "The Realms world is unavailable.",
+          "outside_bounds": "The realm spawn is outside its bounds.",
+          "outside_border": "The realm spawn is outside the world border.",
+          "unsafe_spawn": "The realm spawn is unsafe.",
+          "riding": "Dismount and remove passengers before teleporting.",
+          "success": "The teleport did not complete."
+        },
+        "setspawn": {
+          "no_realm": "You do not own a realm.",
+          "realm_not_active": "Your realm is not active.",
+          "not_in_realms": "You must be inside your realm.",
+          "outside_bounds": "That position is outside your realm bounds.",
+          "unsafe": "That position is not a safe spawn.",
+          "success": "The realm spawn was not changed."
+        }
+      }
+    },
+    "membership": {
+      "invitation_result": "Invitation {status} for {player}.",
+      "invitation_received": "{owner} invited you to their realm.",
+      "invitation_action": "Realm invitation {action}.",
+      "invitation_line": "- {owner} ",
+      "invitations_title": "Realm invitations:",
+      "no_invitations": "You have no realm invitations.",
+      "member_removed": "Removed {player} from the realm.",
+      "left": "You left {owner}'s realm.",
+      "access_changed": "Realm access changed to {access}.",
+      "access_unchanged": "Realm access is already {access}.",
+      "visiting": "Visiting {owner}'s realm.",
+      "owner_line": "Owner: {owner}",
+      "members_title": "Members:",
+      "members_none": "This realm has no members.",
+      "unknown_member": "Unknown member",
+      "errors": {
+        "member_not_found": "That member was not found.",
+        "visit_denied": "You cannot visit that realm: {detail}",
+        "visit_failed": "Teleport failed: {detail}",
+        "inspection": {
+          "target_not_found": "That member was not found.",
+          "no_realm": "No realm was found.",
+          "ambiguous_membership": "That player belongs to multiple matching realms.",
+          "not_authorized": "You may not inspect that realm's members."
+        }
+      }
+    },
+    "owner": {
+      "name_changed": "Realm name changed.",
+      "description_changed": "Realm description changed.",
+      "description_cleared": "Realm description cleared.",
+      "description_empty": "This realm has no description.",
+      "listing_enabled": "Your realm is now listed publicly.",
+      "listing_disabled": "Your realm is no longer publicly listed.",
+      "directory_title": "Public realms - page {page}/{pages}:",
+      "directory_name": "{name} ",
+      "directory_owner": "owner: {owner} ",
+      "directory_description": "- {description} ",
+      "directory_empty": "No public realms are listed.",
+      "visit_hover": "Visit realm {realm_id}",
+      "kicked": "Removed {player} from the realm.",
+      "banned": "Banned {player} from the realm.",
+      "unbanned": "Unbanned {player} from the realm.",
+      "bans_title": "Realm bans - page {page}/{pages}:",
+      "ban_line": "- {player}",
+      "ban_line_reason": "- {player}: {reason}",
+      "role_changed": "Changed {player}'s role to {role}.",
+      "managers_title": "Realm managers:",
+      "occupants_title": "Players currently in this realm:",
+      "occupant_line": "- {player} ({role})",
+      "setting_line": "{setting}: {value}",
+      "setting_changed": "{setting} changed to {value}.",
+      "transfer_offered": "Ownership transfer offered to {player}.",
+      "transfer_received": "{owner} offered you ownership of their realm.",
+      "transfer_accepted": "Realm ownership transferred.",
+      "transfer_declined": "Ownership transfer declined.",
+      "transfer_cancelled": "Ownership transfer cancelled.",
+      "visiting": "Visiting realm {realm_id}.",
+      "errors": {
+        "invalid_name": "Invalid realm name.",
+        "invalid_description": "Invalid realm description.",
+        "invalid_directory_page": "Invalid page. Available pages: {pages}.",
+        "kick_failed": "That player could not be removed from the realm.",
+        "invalid_ban_reason": "Invalid ban reason.",
+        "invalid_ban_page": "Invalid page. Available pages: {pages}.",
+        "invalid_role": "Unknown realm role.",
+        "unknown_setting": "Unknown realm setting.",
+        "invalid_setting_value": "Invalid setting value.",
+        "transfer_cancel_missing": "No pending ownership transfer exists.",
+        "visit_denied": "You cannot visit that realm."
+      }
+    },
+    "wilds": {
+      "status": "Wilds: {state}, entry={entry}, epoch={epoch}, profile={profile}, nextReset={next_reset}, rtpCooldown={cooldown}",
+      "admin_status": "Wilds lifecycle={lifecycle}, entry={entry}, epoch={epoch}, seed={seed}, profile={profile}, nextReset={next_reset}, recovery={recovery}",
+      "valid": "Wilds validation passed.",
+      "failure": "- {issue}",
+      "spawn_valid": "Wilds spawn is valid.",
+      "terrain_sample": "Terrain sample: {sample}",
+      "operation_accepted": "Wilds operation accepted: {operation}.",
+      "recovery_state": "Recovery state: {state}",
+      "recovery": {
+        "none": "No Wilds recovery action is required.",
+        "offline_tool": "Stop the server and run the offline Wilds reset tool.",
+        "resume": "Resume the interrupted Wilds reset.",
+        "verify": "Verify the prepared Wilds reset.",
+        "scheduled": "The Wilds reset remains scheduled."
+      },
+      "backups_title": "Wilds backups:",
+      "backups_pruned": "Pruned {count} Wilds backups.",
+      "errors": {
+        "invalid_duration": "Invalid duration.",
+        "operation_refused": "Wilds operation refused: {operation}.",
+        "setspawn_player_required": "A player must set the Wilds spawn.",
+        "terrain_sample_failed": "The Wilds terrain sample failed.",
+        "prune_refused": "Wilds backup pruning was refused."
+      }
+    },
+    "backups": {
+      "own_title": "Your realm backups ({count}):",
+      "target_realm": "Backups for realm {realm_id}:",
+      "target_owner": "Backups for {owner}:",
+      "player_summary": "{created_at} | {reason} | {size}",
+      "admin_summary": "{backup_id} | realm {realm_id} | {owner} | {created_at} | {size}",
+      "queued_all": "Queued backups for {queued} of {total} active realms.",
+      "status": "Backup queue: {queued} queued, {running} running.",
+      "active": "Active backup: {active}",
+      "active_realm": "realm {realm_id}, backup {backup_id}",
+      "next_due": "Next automatic backup: {time}",
+      "catalog_title": "Backup catalog ({count}):",
+      "info_integrity": "Integrity={integrity}, reason={reason}, pinned={pinned}",
+      "info_allocation": "Allocation={allocation}, bounds={bounds}",
+      "info_files": "Payload files: {count}",
+      "verifying": "Verifying backup {backup_id}...",
+      "verify_success": "Backup verification passed.",
+      "pinned": "Backup pinned.",
+      "unpinned": "Backup unpinned.",
+      "due_queued": "Queued {count} due automatic backups.",
+      "delete_confirm": "Confirm with token: {token}",
+      "restore_preparing": "Preparing offline restore...",
+      "operation_id": "Restore operation: {operation_id}",
+      "restore_tool_instruction": "Stop the server before running the restore tool.",
+      "restore_cancelled": "Prepared restore cancelled.",
+      "prune_preview": "Prune preview: {count} backups, {size}.",
+      "pruned": "Pruned {count} backups and reclaimed {size}.",
+      "prune_line": "- {backup_id} ({size})",
+      "catalog_validated": "Backup catalog valid; {count} entries checked.",
+      "catalog_rebuilt": "Backup catalog rebuilt: {count} entries, {orphans} orphan archives.",
+      "catalog_warning": "Catalog warning: {warning}",
+      "try_again": "Try again in {duration}.",
+      "queue_position": "Queue position: {position}",
+      "admin_queued": "Queued backup {backup_id} for realm {realm_id}.",
+      "errors": {
+        "owner_ambiguous": "That owner name is ambiguous.",
+        "owner_unknown": "No matching realm owner was found.",
+        "no_active_realms": "No active realms are eligible for backup.",
+        "queued_all_rejected": "{count} realm backups were rejected.",
+        "not_found": "No backup exists with that ID.",
+        "verify_exception": "Backup verification failed unexpectedly. Check the server log.",
+        "verify_failed": "Backup verification failed: {failures}",
+        "catalog_update_failed": "The backup catalog could not be updated.",
+        "restore_prepare_failed": "Offline restore preparation failed unexpectedly.",
+        "restore_cancel_missing": "No prepared restore exists to cancel.",
+        "storage_limits": "The retention policy still exceeds configured storage limits.",
+        "catalog_rebuild_failed": "The backup catalog could not be rebuilt.",
+        "invalid_id": "Invalid backup ID."
+      }
+    },
+    "admin": {
+      "message": "{message}",
+      "indexes_rebuilt": "Derived indexes rebuilt from validated authoritative records.",
+      "stale_sessions_removed": "Removed {count} stale session entries.",
+      "expired_operations_removed": "Removed {count} expired operation records.",
+      "support_exported": "Support bundle created at {path}.",
+      "config": {
+        "applied": "Applied: {value}",
+        "deferred": "Deferred: {value}",
+        "restart": "Restart required: {value}",
+        "rejected": "Rejected: {value}"
+      },
+      "archives": {
+        "title": "Archived realms: {count}",
+        "line": "{summary} archivedAt={archived_at} replacedBy={replaced_by}",
+        "info": "allocationProfile={profile} allocation={allocation} archivedAt={archived_at} replacementOf={replacement_of} replacedBy={replaced_by}"
+      },
+      "archive_restored": "Archived realm {realm_id} restored without changing its allocation.",
+      "operation": {
+        "info": "operation={operation} kind={kind} stage={stage} target={target}",
+        "failure": "failure={code}: {detail}"
+      },
+      "lifecycle_retry_result": "Lifecycle retry result: {status}",
+      "realms_title": "Realms: {count}",
+      "realm": {
+        "summary": "Realm {realm_id} owner={owner} state={state}",
+        "allocation": "dimension={dimension} allocationProfile={profile} cell={cell} cellBounds={cell_bounds} buildable={buildable}",
+        "details": "spawn={spawn} preset={preset} members={members} visitors={visitors} policy={policy} createdAt={created_at}",
+        "failure": "failure={failure}"
+      },
+      "allocation_preview": "Realm {realm_id} allocationProfile={profile} cell={cell} cellBounds={cell_bounds} buildable={buildable}",
+      "validation": {
+        "valid": "Paradigm Realms state is valid.",
+        "issues": "Validation issues: {count}",
+        "issue": "{severity} {code}: {message}"
+      },
+      "presets": {
+        "title": "Preset catalog: {count} definitions; loaded {loaded_at}",
+        "line": "{preset} v{version} {enabled} {source}{selectable}{legacy}{reasons}",
+        "identity": "id={id} version={version} revision={revision} source={source}",
+        "placement": "format={format} structure={structure} bounds={bounds} spawn={spawn}",
+        "flags": "selectable={selectable} legacy={legacy} requiredMods={required_mods} aliases={aliases} fingerprint={fingerprint}",
+        "disabled": "disabled: {reasons}",
+        "valid": "Preset catalog is valid.",
+        "issues": "Preset validation issues: {count}",
+        "reloading": "Reloading preset catalog...",
+        "reloaded": "Preset catalog reloaded: {count} definitions."
+      },
+      "imports": {
+        "directory": "Imported preset directory:",
+        "bindings": "Bindings: {count}",
+        "binding_line": "- {preset} -> {file}",
+        "files": "Import files: {count}",
+        "file_line": "- {file}",
+        "prepublication": "Prepublication checks:",
+        "result": "Import {status}{preset}",
+        "preset_suffix": " as {preset}",
+        "details": "source={source} format={format} fingerprint={fingerprint}",
+        "warning": "warning: {warning}"
+      },
+      "bypass_enabled": "Protection bypass enabled for this session.",
+      "bypass_disabled": "Protection bypass disabled.",
+      "bypass_status": "Protection bypass: {state}",
+      "errors": {
+        "index_repair_refused": "Index repair refused because authoritative state is invalid.",
+        "support_export_failed": "Support export failed. See the server log.",
+        "not_archived": "That realm is not archived.",
+        "archive_restore_rejected": "Archive restore rejected: {status}",
+        "no_lifecycle_operation": "No lifecycle operation exists for that realm.",
+        "lifecycle_retry_failed": "Lifecycle retry failed: {status}",
+        "unknown_realm_id": "Unknown realm ID {realm_id}.",
+        "player_uuid_missing": "The selected player has no UUID.",
+        "owner_has_no_realm": "No realm belongs to {player}.",
+        "unknown_preset": "Unknown preset {preset}.",
+        "preset_reload_failed": "Preset reload failed: {detail}",
+        "import_bindings_read": "Could not read import bindings: {detail}",
+        "invalid_namespaced_preset": "The preset ID must be namespaced.",
+        "invalid_preset_id": "Invalid preset ID.",
+        "bypass_player_required": "Only a player can enable protection bypass.",
+        "bypass_status_player_required": "Only a player has a bypass status."
+      }
+    }
+  },
+  "wilds": {
+    "enabled": "Wilds is open.",
+    "enter": "Entering Wilds.",
+    "info": "Wilds information",
+    "spawn": "Teleported to Wilds spawn.",
+    "rtp": "Teleported to a random Wilds location.",
+    "rtp_searching": "Searching for a safe Wilds location...",
+    "rtp_succeeded": "Teleported to Wilds after {attempts} attempt(s).",
+    "rtp_failed": "Wilds RTP failed. Please try again.",
+    "schedule": {
+      "enabled": "enabled"
+    },
+    "reset_scheduled": "Only Wilds will reset at {time}; personal realms are unaffected.",
+    "reset_cancelled": "The scheduled Wilds reset was cancelled.",
+    "reset_completed": "Wilds reset completed. Personal realms were not changed.",
+    "offline_reset_ready": "Wilds is saved and ready for an offline reset. Stop the server and run the reset tool.",
+    "reset_warning": "Wilds resets in {seconds} seconds. Personal realms are unaffected.",
+    "evacuated_realm": "You were evacuated from Wilds to your personal realm ({reason}).",
+    "evacuated_overworld": "You were evacuated from Wilds to the Overworld ({reason})."
+  },
+  "realm_lifecycle": {
+    "reset_backup_failed": "Your realm was not recreated because its safety backup failed.",
+    "reset_completed": "Realm reset completed. Your previous realm is archived.",
+    "reset_failed_preserved": "Your realm could not be recreated. Your original realm is still active.",
+    "archive_backup_failed": "Your realm was not archived because its safety backup failed.",
+    "archived": "Realm archived. Its blocks and allocation remain protected.",
+    "archive_failed_active": "Your realm could not be archived. It remains active."
+  },
+  "protection": {
+    "wilds_blocked": "That action is blocked by Wilds lifecycle or spawn protection.",
+    "pvp_disabled": "PvP is disabled in this realm.",
+    "entry_denied": "You cannot enter that realm ({reason}).",
+    "returned_realm": "You were returned to your realm ({reason}).",
+    "returned_overworld": "You were returned to the Overworld ({reason})."
+  },
+  "compatibility": {
+    "dimension_not_loaded": "Dimension is not loaded: {dimension}",
+    "outside_border": "Compatibility destination is outside the world border.",
+    "teleported": "Teleported to {dimension} for compatibility testing."
+  },
+  "backup": {
+    "starting": "Saving realm backup...",
+    "capture_started": "Creating a backup of {realm_name} (realm #{realm_id}). Building and container changes will pause briefly.",
+    "progress": "Saving realm backup... {captured}/{total} storage records",
+    "locked": "This realm is briefly read-only while a backup is captured.",
+    "completed": "Backup of {realm_name} (realm #{realm_id}) completed. {records} storage records | {size} | capture {duration}",
+    "automatic_completed": "An automatic backup of your realm was completed.",
+    "automatic_failed": "Automatic backup for realm {realm_id} failed. Check the server log.",
+    "failed": "The realm backup could not be completed. Your realm was unlocked and no existing data was changed."
+  },
+  "backup_results": {
+    "queued": "Your realm backup has been queued.",
+    "delete_confirmation": "Confirm this backup deletion with the scoped token below.",
+    "deleted": "Backup deleted.",
+    "restore_prepared": "Offline restore prepared. Stop the server before running the restore tool."
+  },
+  "backup_failures": {
+    "realm_not_found": "No realm was found for that backup request.",
+    "realm_not_active": "Only an active realm can be backed up right now.",
+    "realm_busy": "This realm is currently busy with another operation. Try again when it is complete.",
+    "queue_full": "The realm backup queue is full. Please try again later.",
+    "cooldown_active": "Your next realm backup is not available yet.",
+    "insufficient_space": "The server does not have enough free space for another realm backup.",
+    "lock_timeout": "The realm could not be made read-only in time. No data was changed.",
+    "save_barrier_failed": "The realm backup could not be completed. Your realm was unlocked and no existing data was changed.",
+    "capture_failed": "The realm backup could not be completed. Your realm was unlocked and no existing data was changed.",
+    "package_failed": "The realm backup could not be completed. Your realm was unlocked and no existing data was changed.",
+    "verification_failed": "The realm backup could not be completed. Your realm was unlocked and no existing data was changed.",
+    "catalog_failed": "The realm backup could not be completed. Your realm was unlocked and no existing data was changed.",
+    "internal_error": "The realm backup could not be completed. Your realm was unlocked and no existing data was changed.",
+    "cancelled": "The realm backup was cancelled. Your realm is available again."
+  },
+  "backup_states": {
+    "queued": "queued",
+    "preparing": "preparing",
+    "locking": "locking",
+    "flushing": "flushing",
+    "capturing": "capturing",
+    "packaging": "packaging",
+    "verifying": "verifying",
+    "completed": "completed",
+    "failed": "failed",
+    "cancelled": "cancelled"
+  },
+  "backup_integrity": {
+    "unverified": "unverified",
+    "verifying": "verifying",
+    "verified": "verified",
+    "invalid": "invalid",
+    "missing": "missing"
+  },
+  "backup_reasons": {
+    "manual": "manual",
+    "player_requested": "player requested",
+    "automatic": "automatic",
+    "pre_reset": "before reset",
+    "pre_delete": "before deletion",
+    "pre_archive_restore": "before archive restore",
+    "pre_ownership_transfer": "before ownership transfer",
+    "pre_manual_restore": "before manual restore"
+  },
+  "help": {
+    "separator": "------------------------------------",
+    "brand_first": "Paradigm ",
+    "brand_second": "Realms",
+    "brand": "Paradigm Realms",
+    "version_suffix": " v{version}",
+    "by": "by ",
+    "author": "Avalanche7",
+    "heart": " <3",
+    "minecraft": "Minecraft {version} | ",
+    "loader": "{loader} {version}",
+    "bullet": "* ",
+    "section_summary": " - {summary} ",
+    "open_button": "[open]",
+    "click_prepare": "Click to prepare {command}",
+    "tip": "Tip: ",
+    "click": "click ",
+    "start_typing": "Start typing a realm command",
+    "tab_completion": " or use tab completion.",
+    "tagline": " - personal worlds, shared adventures.",
+    "prepare": "Prepare {command}",
+    "focused": {
+      "realm": "Realm commands",
+      "wilds": "Wilds commands",
+      "admin": "Realm administration commands"
+    },
+    "version": {
+      "mod": "Paradigm Realms {version}",
+      "platform": "Minecraft {minecraft}, {loader} {loader_version}",
+      "schema": "Schema {schema}, reset tool compatibility {reset_tool}",
+      "integration": "Paradigm integration: {state}"
+    },
+    "sections": {
+      "getting_started": {
+        "title": "Getting started",
+        "summary": "create your personal realm"
+      },
+      "home_identity": {
+        "title": "Home and identity",
+        "summary": "travel and customize your realm"
+      },
+      "community": {
+        "title": "Community",
+        "summary": "list and visit public realms"
+      },
+      "members_roles": {
+        "title": "Members and roles",
+        "summary": "invite players and manage access"
+      },
+      "moderation": {
+        "title": "Moderation",
+        "summary": "remove and ban players"
+      },
+      "protection": {
+        "title": "Protection",
+        "summary": "configure realm rules"
+      },
+      "lifecycle": {
+        "title": "Lifecycle",
+        "summary": "reset or archive your realm safely"
+      },
+      "wilds": {
+        "title": "Wilds",
+        "summary": "explore the renewable resource world"
+      },
+      "administration": {
+        "title": "Administration",
+        "summary": "validate, repair and inspect the service"
+      }
+    }
+  }
+}

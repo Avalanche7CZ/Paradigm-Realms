@@ -4,63 +4,39 @@ import java.util.Map;
 
 public enum RealmMessageKey {
     BACKUP_CAPTURE_STARTED(
-            MessageChannel.CHAT,
-            "<color:aqua>Creating a backup of {realm_name} (realm #{realm_id})…</color>\n"
-                    + "<color:gray>Building and container changes will be paused briefly.</color>",
-            "Creating a backup of {realm_name} (realm #{realm_id}). "
-                    + "Building and container changes will pause briefly."),
+            MessageChannel.CHAT),
     BACKUP_PROGRESS(
-            MessageChannel.ACTION_BAR,
-            "<color:aqua>Saving realm backup… {captured}/{total} storage records</color>",
-            "Saving realm backup... {captured}/{total} storage records"),
+            MessageChannel.ACTION_BAR),
     BACKUP_LOCKED(
-            MessageChannel.ACTION_BAR,
-            "<color:yellow>This realm is briefly read-only while a backup is captured.</color>",
-            "This realm is briefly read-only while a backup is captured."),
+            MessageChannel.ACTION_BAR),
     BACKUP_COMPLETED(
-            MessageChannel.CHAT,
-            "<color:green>Backup of {realm_name} (realm #{realm_id}) completed.</color>\n"
-                    + "<color:gray>{records} storage records • {size} • capture {duration}</color>",
-            "Backup of {realm_name} (realm #{realm_id}) completed. "
-                    + "{records} storage records | {size} | capture {duration}"),
+            MessageChannel.CHAT),
     BACKUP_AUTOMATIC_COMPLETED(
-            MessageChannel.CHAT,
-            "<color:gray>An automatic backup of your realm was completed.</color>",
-            "An automatic backup of your realm was completed."),
+            MessageChannel.CHAT),
     BACKUP_AUTOMATIC_FAILED(
-            MessageChannel.ADMIN_CHAT,
-            "<color:red>Automatic backup for realm {realm_id} failed.</color>\n"
-                    + "<color:gray>Check the server log for the internal failure code.</color>",
-            "Automatic backup for realm {realm_id} failed. Check the server log."),
+            MessageChannel.ADMIN_CHAT),
     BACKUP_FAILED(
-            MessageChannel.CHAT,
-            "<color:red>The realm backup could not be completed.</color>\n"
-                    + "<color:gray>Your realm was unlocked and no existing data was changed.</color>",
-            "The realm backup could not be completed. Your realm was unlocked and no existing data was changed.");
+            MessageChannel.CHAT);
 
     private final MessageChannel channel;
-    private final String template;
-    private final String fallback;
 
-    RealmMessageKey(MessageChannel channel, String template, String fallback) {
+    RealmMessageKey(MessageChannel channel) {
         this.channel = channel;
-        this.template = template;
-        this.fallback = fallback;
     }
 
     public MessageChannel channel() {
         return channel;
     }
 
+    public String key() {
+        return "backup." + name().substring("BACKUP_".length()).toLowerCase(java.util.Locale.ROOT);
+    }
+
     public String template() {
-        return template;
+        return PlayerMessages.text(key());
     }
 
     public String fallback(Map<String, String> values) {
-        String result = fallback;
-        for (Map.Entry<String, String> value : values.entrySet()) {
-            result = result.replace('{' + value.getKey() + '}', value.getValue());
-        }
-        return result;
+        return PlayerMessages.text(key(), values);
     }
 }

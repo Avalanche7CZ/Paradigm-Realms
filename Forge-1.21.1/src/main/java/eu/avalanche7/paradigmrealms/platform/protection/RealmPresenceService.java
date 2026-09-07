@@ -200,18 +200,21 @@ public final class RealmPresenceService {
             player.getPassengerList().forEach(net.minecraft.entity.Entity::stopRiding);
             SafeLocation previous = lastAllowed.get(player.getUuid());
             if (previous != null && tryLastAllowed(player, previous)) {
-                player.sendMessage(Text.literal("You cannot enter that realm (" + reason + ")."), false);
+                player.sendMessage(Text.literal(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "protection.entry_denied", java.util.Map.of("reason", reason))), false);
                 return;
             }
             var owned = runtime.repository().findByOwner(player.getUuid());
             if (owned.isPresent() && owned.orElseThrow().state() == RealmLifecycleState.ACTIVE
                     && teleports.teleportToRealm(player.getUuid(), owned.orElseThrow()) == TeleportResult.SUCCESS) {
-                player.sendMessage(Text.literal("You were returned to your realm (" + reason + ")."), false);
+                player.sendMessage(Text.literal(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "protection.returned_realm", java.util.Map.of("reason", reason))), false);
                 return;
             }
             TeleportResult fallback = teleports.teleportToOverworldSpawn(player.getUuid());
             if (fallback == TeleportResult.SUCCESS) {
-                player.sendMessage(Text.literal("You were returned to the Overworld (" + reason + ")."), false);
+                player.sendMessage(Text.literal(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
+                        "protection.returned_overworld", java.util.Map.of("reason", reason))), false);
             } else {
                 ParadigmRealms.LOGGER.error("Could not evacuate {} from protected realm: {}", player.getUuid(), fallback);
             }

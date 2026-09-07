@@ -6,7 +6,7 @@ version = rootProject.mod_version
 base.archivesName = project.archives_base_name
 def resolvedModVersion = version.toString()
 def paradigmApiPath = providers.gradleProperty('paradigmApiPath')
-        .orElse('../Paradigm/common/build/libs/paradigm-api-2.2.4.jar')
+        .orElse('../Paradigm/common/build/libs/paradigm-api-2.3.0-b.jar')
 def paradigmApiFile = rootProject.file(paradigmApiPath.get())
 
 dependencies {
@@ -30,7 +30,7 @@ def paradigmRuntimePath = providers.gradleProperty('paradigmRuntimePath')
 if (paradigmRuntimePath.isPresent()) {
     def runtimeFile = rootProject.file(paradigmRuntimePath.get())
     def runtimeCommonFile = rootProject.file(providers.gradleProperty('paradigmRuntimeCommonPath')
-            .orElse('../Paradigm/common/build/libs/common-2.2.4.jar').get())
+            .orElse('../Paradigm/common/build/libs/common-2.3.0-b.jar').get())
     if (!runtimeFile.isFile()) {
         throw new GradleException("Requested Paradigm runtime jar not found at ${runtimeFile}")
     }
