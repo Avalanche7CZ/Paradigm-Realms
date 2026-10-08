@@ -44,6 +44,7 @@ public final class WildsRtpCoordinator {
 
     public WildsActionResult request(UUID player) {
         java.util.Objects.requireNonNull(player, "player");
+        if (!config.get().enabled()) return WildsActionResult.DISABLED;
         if (searches.containsKey(player)) return WildsActionResult.ALREADY_SEARCHING;
         Instant now = clock.instant();
         Instant cooldown = cooldowns.get(player);
@@ -84,7 +85,7 @@ public final class WildsRtpCoordinator {
         WildsConfig current = config.get();
         WildsState state = lifecycle.state();
         Instant now = clock.instant();
-        if (!platform.online(search.player) || !state.lifecycle().entryOpen()
+        if (!current.enabled() || !platform.online(search.player) || !state.lifecycle().entryOpen()
                 || state.activeEpoch() != search.epoch) {
             finish(search, "cancelled because Wilds entry or generation changed");
             return;

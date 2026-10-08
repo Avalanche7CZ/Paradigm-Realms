@@ -4,7 +4,12 @@ import java.util.UUID;
 
 public final class WildsEntryPolicy {
     public WildsEntryDecision evaluate(WildsState state, UUID player, boolean permitted, boolean joiningFromSavedWilds) {
-        if (state.lifecycle() == WildsLifecycleState.DISABLED) return deny(state, WildsEntryDecision.Reason.DISABLED);
+        return evaluate(state, player, true, permitted, joiningFromSavedWilds);
+    }
+
+    public WildsEntryDecision evaluate(WildsState state, UUID player, boolean enabled,
+            boolean permitted, boolean joiningFromSavedWilds) {
+        if (!enabled || state.lifecycle() == WildsLifecycleState.DISABLED) return deny(state, WildsEntryDecision.Reason.DISABLED);
         if (!state.lifecycle().entryOpen()) return deny(state, WildsEntryDecision.Reason.LIFECYCLE_BLOCKED);
         if (!state.generationVerified()) return deny(state, WildsEntryDecision.Reason.GENERATION_UNVERIFIED);
         if (!permitted) return deny(state, WildsEntryDecision.Reason.PERMISSION_DENIED);

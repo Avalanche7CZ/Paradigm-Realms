@@ -91,6 +91,11 @@ public final class RealmBackupMutationLocks {
                 .findFirst();
     }
 
+    public boolean realmEntryBlocked(long realmId) {
+        ActiveLock lock = locks.get(realmId);
+        return lock != null && lock.entryBlocked();
+    }
+
     public int activeCount() {
         return locks.size();
     }

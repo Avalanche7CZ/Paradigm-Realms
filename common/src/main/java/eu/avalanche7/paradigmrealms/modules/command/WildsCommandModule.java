@@ -151,7 +151,8 @@ public final class WildsCommandModule {
                                 runtime.wildsCooldownRemaining(player.uuid()).toSeconds()))))
                 .orElseGet(() -> eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.not_available"));
         messages.sendLocalized(source, "commands.wilds.status",
-                Map.of("state", state.lifecycle().name(), "entry", Boolean.toString(state.lifecycle().entryOpen()),
+                Map.of("state", runtime.wildsEnabled() ? state.lifecycle().name() : WildsLifecycleState.DISABLED.name(),
+                        "entry", Boolean.toString(runtime.wildsEnabled() && state.lifecycle().entryOpen()),
                         "epoch", Long.toString(state.activeEpoch()), "profile", profile,
                         "next_reset", next, "cooldown", cooldown));
         return 1;
@@ -163,9 +164,14 @@ public final class WildsCommandModule {
         if (runtime == null) return 0;
         var state = runtime.wildsState();
         source.sendFeedbackKey("commands.wilds.admin_status", Map.of(
-                "state", state.lifecycle().name(), "entry", Boolean.toString(state.lifecycle().entryOpen()),
+                "state", runtime.wildsEnabled() ? state.lifecycle().name() : WildsLifecycleState.DISABLED.name(),
+                "lifecycle", runtime.wildsEnabled() ? state.lifecycle().name() : WildsLifecycleState.DISABLED.name(),
+                "entry", Boolean.toString(runtime.wildsEnabled() && state.lifecycle().entryOpen()),
                 "verified", Boolean.toString(state.generationVerified()),
                 "epoch", Long.toString(state.activeEpoch()),
+                "seed", Long.toString(state.activeSeed()),
+                "recovery", state.failure().map(failure -> failure.code()).orElseGet(() ->
+                        eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.none")),
                 "profile", state.activeProfile().map(Object::toString).orElseGet(() ->
                         eu.avalanche7.paradigmrealms.message.PlayerMessages.text("common.not_set")),
                 "next_reset", state.nextScheduledReset().map(Object::toString).orElseGet(() ->
@@ -309,10 +315,11 @@ public final class WildsCommandModule {
 
     private static int result(CommandSource source, WildsActionResult result) {
         if (result == WildsActionResult.SUCCESS) {
-            source.sendFeedbackKey("commands.wilds.operation_accepted");
+            source.sendFeedbackKey("commands.wilds.operation_accepted", Map.of("operation", result.name()));
             return 1;
         }
-        source.sendErrorKey("commands.wilds.errors.operation_refused", Map.of("result", result.name()));
+        source.sendErrorKey("commands.wilds.errors.operation_refused",
+                Map.of("result", result.name(), "operation", result.name()));
         return 0;
     }
 

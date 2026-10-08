@@ -145,7 +145,7 @@ public final class RealmsRuntime {
                 Objects.requireNonNull(generation, "generation"), Objects.requireNonNull(clock, "clock"),
                 Objects.requireNonNull(operationIds, "operationIds"), settingsPolicy.defaults());
         this.teleports = new RealmTeleportService(
-                Objects.requireNonNull(serverPlatform, "serverPlatform"));
+                Objects.requireNonNull(serverPlatform, "serverPlatform"), hooks::realmEntryAllowed);
         this.spawns = new RealmSpawnService(repository, teleports, serverPlatform.players());
         this.membership = new RealmMembershipService(
                 repository, Objects.requireNonNull(membershipLimits, "membershipLimits"), clock);
@@ -155,7 +155,7 @@ public final class RealmsRuntime {
                 generation, lifecycleEffects, clock, operationIds, hooks::realmIndexChanged);
         this.confirmations = new RealmConfirmationService(clock);
         this.ownershipTransfers = new RealmOwnershipTransferService(
-                repository, clock, operationIds, transferExpiry, previousOwnerRole);
+                repository, clock, operationIds, transferExpiry, previousOwnerRole, hooks::realmOwnershipTransferAllowed);
         hooks.realmIndexChanged();
     }
 
@@ -173,6 +173,10 @@ public final class RealmsRuntime {
 
     public ValidationReport validate(Set<DimensionId> dimensions) {
         return startupValidation.validate(dimensions);
+    }
+
+    public ValidationReport validate(Set<DimensionId> dimensions, boolean wildsEnabled) {
+        return startupValidation.validate(dimensions, wildsEnabled);
     }
 
     public RealmRepository repository() { return repository; }

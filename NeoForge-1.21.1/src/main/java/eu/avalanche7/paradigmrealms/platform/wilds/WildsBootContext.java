@@ -21,12 +21,21 @@ import net.minecraft.util.WorldSavePath;
 public final class WildsBootContext {
     private static final String ACTIVE_RELATIVE = "paradigm-realms/wilds-active.properties";
     private static volatile BootPlan plan;
+    private static volatile boolean enabled;
 
     private WildsBootContext() {}
 
     public static void beforeWorlds(MinecraftServer server) {
+        beforeWorlds(server.getSavePath(WorldSavePath.ROOT),
+                eu.avalanche7.paradigmrealms.platform.config.RealmsConfigLoader.load().wilds().enabled());
+    }
+
+    static void beforeWorlds(Path worldRoot, boolean wildsEnabled) {
+        clear();
+        enabled = wildsEnabled;
+        if (!enabled) return;
         try {
-            Path root = server.getSavePath(WorldSavePath.ROOT).toRealPath();
+            Path root = worldRoot.toRealPath();
             WildsManifestFile manifests = new WildsManifestFile();
             Optional<WildsResetManifest> pending = manifests.read(root);
             if (pending.isPresent()) {
@@ -98,7 +107,9 @@ public final class WildsBootContext {
         plan = new BootPlan(root, seed, profile, Optional.empty());
     }
 
-    public static void clear() { plan = null; }
+    public static boolean enabled() { return enabled; }
+
+    public static void clear() { plan = null; enabled = false; }
 
     private static Optional<BootPlan> readActive(Path root) throws IOException {
         Path file = root.resolve(ACTIVE_RELATIVE);

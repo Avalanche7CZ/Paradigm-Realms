@@ -121,6 +121,12 @@ public final class ForgeRealmRuntime implements RealmsCommandRuntime {
                 Duration.ofMinutes(config.ownershipTransferExpiryMinutes()),
                 config.previousOwnerRoleAfterTransfer(),
                 new RealmsRuntimeHooks() {
+                    @Override public boolean realmEntryAllowed(eu.avalanche7.paradigmrealms.domain.RealmId id) {
+                        return !backupLocks.realmEntryBlocked(id.value());
+                    }
+                    @Override public boolean realmOwnershipTransferAllowed(eu.avalanche7.paradigmrealms.domain.RealmId id) {
+                        return !backupLocks.realmEntryBlocked(id.value());
+                    }
                     @Override public void realmIndexChanged() { refreshProtectionIndex(); }
                     @Override public void revalidateRealmPresence(eu.avalanche7.paradigmrealms.domain.RealmId id) {
                         ForgeRealmRuntime.this.revalidateRealmPresence(id);
@@ -179,7 +185,7 @@ public final class ForgeRealmRuntime implements RealmsCommandRuntime {
         Set<DimensionId> dimensions = server.getWorldRegistryKeys().stream()
                 .map(key -> DimensionId.parse(key.getValue().toString()))
                 .collect(Collectors.toUnmodifiableSet());
-        return common.validate(dimensions).plus(presetValidationIssues());
+        return common.validate(dimensions, wilds.config().enabled()).plus(presetValidationIssues());
     }
 
     @Override public ValidationReport validateRealms() { return validate(); }
@@ -928,6 +934,7 @@ public final class ForgeRealmRuntime implements RealmsCommandRuntime {
                 "Realm backups are unavailable. Ask an administrator to check the server log.");
     }
 
+    @Override public boolean wildsEnabled() { return wilds.config().enabled(); }
     @Override public eu.avalanche7.paradigmrealms.wilds.WildsState wildsState() { return wilds.state(); }
     @Override public Duration wildsCooldownRemaining(UUID player) { return wilds.cooldownRemaining(player); }
     @Override public WildsActionResult enterWilds(UUID player) {
@@ -1101,11 +1108,8 @@ public final class ForgeRealmRuntime implements RealmsCommandRuntime {
                     presence,
                     messages);
         } catch (java.io.IOException | RuntimeException exception) {
-            eu.avalanche7.paradigmrealms.ParadigmRealms.LOGGER.error(
-                    "Realm backup service is unavailable: {}",
-                    exception.getMessage());
-            locks.clear();
-            return null;
+            throw new IllegalStateException(
+                    "Realm backup recovery could not initialize; refusing unsafe startup", exception);
         }
     }
 

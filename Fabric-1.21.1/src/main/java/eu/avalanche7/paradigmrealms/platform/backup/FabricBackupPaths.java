@@ -14,9 +14,11 @@ final class FabricBackupPaths {
     private final Path backupRoot;
 
     FabricBackupPaths(MinecraftServer server) throws IOException {
-        worldRoot = server.getSavePath(WorldSavePath.ROOT)
-                .toAbsolutePath()
-                .normalize();
+        this(server.getSavePath(WorldSavePath.ROOT));
+    }
+
+    FabricBackupPaths(Path worldDirectory) throws IOException {
+        worldRoot = worldDirectory.toAbsolutePath().normalize();
         backupRoot = worldRoot.resolve("backups/paradigm-realms");
 
         Files.createDirectories(backupRoot);

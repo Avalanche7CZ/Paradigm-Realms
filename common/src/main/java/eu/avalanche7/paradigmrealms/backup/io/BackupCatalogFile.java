@@ -65,6 +65,15 @@ public final class BackupCatalogFile {
     }
 
     public RebuildResult rebuild(Path backupRoot) throws IOException {
+        LoadResult previous = load(backupRoot);
+        return rebuild(backupRoot, previous.catalog(), !previous.warnings().isEmpty());
+    }
+
+    public RebuildResult rebuild(Path backupRoot, BackupCatalog previous) throws IOException {
+        return rebuild(backupRoot, previous, false);
+    }
+
+    private RebuildResult rebuild(Path backupRoot, BackupCatalog previous, boolean protectRecovered) throws IOException {
         Path realmsRoot = backupRoot.resolve("realms");
         if (!Files.isDirectory(realmsRoot, LinkOption.NOFOLLOW_LINKS)) {
             Files.createDirectories(realmsRoot);
@@ -90,6 +99,9 @@ public final class BackupCatalogFile {
 
         BackupCatalog catalog = new BackupCatalog(List.of());
         List<String> warnings = new ArrayList<>();
+        if (protectRecovered && !archives.isEmpty()) {
+            warnings.add("Previous catalog protections are unavailable; recovered backups are pinned for administrator review.");
+        }
         for (Path archive : archives) {
             var result = verifier.verify(archive);
             if (!result.valid()) {
@@ -97,6 +109,7 @@ public final class BackupCatalogFile {
                 continue;
             }
             var manifest = result.manifest().orElseThrow();
+            BackupCatalogEntry prior = previous.find(manifest.backupId()).orElse(null);
             EnumMap<BackupStorageKind, Integer> counts = new EnumMap<>(BackupStorageKind.class);
             for (BackupStorageKind kind : BackupStorageKind.values()) {
                 counts.put(kind, manifest.chunkCount(kind));
@@ -111,8 +124,8 @@ public final class BackupCatalogFile {
                     Files.size(archive),
                     backupRoot.relativize(archive).toString().replace('\\', '/'),
                     BackupIntegrityStatus.VERIFIED,
-                    manifest.pinned(),
-                    false,
+                    protectRecovered || (prior == null ? manifest.pinned() : prior.pinned()),
+                    prior != null && prior.restoreInUse(),
                     manifest.formatVersion(),
                     manifest.minecraftVersion(),
                     manifest.realmsVersion(),

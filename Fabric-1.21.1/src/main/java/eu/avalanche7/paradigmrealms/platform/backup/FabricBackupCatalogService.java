@@ -64,8 +64,7 @@ final class FabricBackupCatalogService {
     }
 
     synchronized void add(BackupCatalogEntry entry) throws IOException {
-        catalog.put(entry);
-        catalogFile.save(paths.backupRoot(), catalog);
+        saveEntry(entry);
     }
 
     synchronized boolean pin(BackupId backupId, boolean pinned) throws IOException {
@@ -73,8 +72,7 @@ final class FabricBackupCatalogService {
         if (current == null) {
             return false;
         }
-        catalog.put(current.withPinned(pinned));
-        catalogFile.save(paths.backupRoot(), catalog);
+        saveEntry(current.withPinned(pinned));
         return true;
     }
 
@@ -83,8 +81,7 @@ final class FabricBackupCatalogService {
         if (current == null) {
             return false;
         }
-        catalog.put(current.withRestoreInUse(inUse));
-        catalogFile.save(paths.backupRoot(), catalog);
+        saveEntry(current.withRestoreInUse(inUse));
         return true;
     }
 
@@ -154,9 +151,16 @@ final class FabricBackupCatalogService {
     }
 
     synchronized BackupCatalogFile.RebuildResult rebuild() throws IOException {
-        BackupCatalogFile.RebuildResult result = catalogFile.rebuild(paths.backupRoot());
+        BackupCatalogFile.RebuildResult result = catalogFile.rebuild(paths.backupRoot(), catalog);
         catalog = result.catalog();
         return result;
+    }
+
+    private void saveEntry(BackupCatalogEntry entry) throws IOException {
+        BackupCatalog replacement = new BackupCatalog(catalog.list());
+        replacement.put(entry);
+        catalogFile.save(paths.backupRoot(), replacement);
+        catalog = replacement;
     }
 
     private BackupCatalog loadOrRebuild() throws IOException {

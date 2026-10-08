@@ -344,6 +344,7 @@ public final class RealmBackupCommandModule {
         }
         var status = runtime.backupStatus();
         source.sendFeedbackKey("commands.backups.status", Map.of(
+                "running", Integer.toString(status.runningOperations()),
                 "verified", Integer.toString(status.catalogSize()), "queued", Integer.toString(status.queueLength()),
                 "locks", Integer.toString(status.activeLocks())));
         source.sendFeedbackKey("commands.backups.active", Map.of("active", status.activeOperation()

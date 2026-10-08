@@ -10,6 +10,7 @@ import eu.avalanche7.paradigmrealms.platform.wilds.WildsActionResult;
 import eu.avalanche7.paradigmrealms.wilds.WildsState;
 
 public interface WildsCommandRuntime {
+    default boolean wildsEnabled() { return true; }
     WildsState wildsState();
     Duration wildsCooldownRemaining(UUID player);
     WildsActionResult enterWilds(UUID player);

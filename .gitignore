@@ -27,6 +27,7 @@ run/
 
 # Package Files #
 *.jar
+!/gradle/wrapper/gradle-wrapper.jar
 *.war
 *.nar
 *.ear
@@ -38,5 +39,26 @@ run/
 hs_err_pid*
 replay_pid*
 /docs
-/Fabric-1.21.1/src/test
+/Fabric-1.21.1/src/test/**
+!/Fabric-1.21.1/src/test/**/
+!/Fabric-1.21.1/src/test/java/eu/avalanche7/paradigmrealms/platform/wilds/WildsBootContextTest.java
+!/Fabric-1.21.1/src/test/java/eu/avalanche7/paradigmrealms/platform/backup/FabricBackupCatalogServiceTest.java
+!/Fabric-1.21.1/src/test/java/eu/avalanche7/paradigmrealms/platform/backup/FabricRestoreCoordinatorTest.java
+/common/src/test/**
+!/common/src/test/**/
+!/common/src/test/java/eu/avalanche7/paradigmrealms/backup/BackupCaptureTaskTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/backup/BackupCatalogRebuildTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/backup/RollbackBackupRequestTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/backup/RestoreRecoveryPolicyTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/backup/BackupArchiveTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/backup/BackupManifestTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/wilds/WildsDisableTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/wilds/WildsRtpCoordinatorTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/application/RealmTeleportEntryTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/wilds/WildsSpawnResolverTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/TestFixtures.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/application/RealmOwnershipTransferServiceTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/backup/io/RestoreManifestFileTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/backup/offline/RealmBackupRestoreToolTest.java
+/validation
 /common/src/test

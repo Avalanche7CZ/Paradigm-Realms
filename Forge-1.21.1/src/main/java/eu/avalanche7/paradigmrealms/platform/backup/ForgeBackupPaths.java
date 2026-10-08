@@ -14,9 +14,11 @@ final class ForgeBackupPaths {
     private final Path backupRoot;
 
     ForgeBackupPaths(MinecraftServer server) throws IOException {
-        worldRoot = server.getSavePath(WorldSavePath.ROOT)
-                .toAbsolutePath()
-                .normalize();
+        this(server.getSavePath(WorldSavePath.ROOT));
+    }
+
+    ForgeBackupPaths(Path worldDirectory) throws IOException {
+        worldRoot = worldDirectory.toAbsolutePath().normalize();
         backupRoot = worldRoot.resolve("backups/paradigm-realms");
 
         Files.createDirectories(backupRoot);

@@ -14,9 +14,11 @@ final class NeoForgeBackupPaths {
     private final Path backupRoot;
 
     NeoForgeBackupPaths(MinecraftServer server) throws IOException {
-        worldRoot = server.getSavePath(WorldSavePath.ROOT)
-                .toAbsolutePath()
-                .normalize();
+        this(server.getSavePath(WorldSavePath.ROOT));
+    }
+
+    NeoForgeBackupPaths(Path worldDirectory) throws IOException {
+        worldRoot = worldDirectory.toAbsolutePath().normalize();
         backupRoot = worldRoot.resolve("backups/paradigm-realms");
 
         Files.createDirectories(backupRoot);

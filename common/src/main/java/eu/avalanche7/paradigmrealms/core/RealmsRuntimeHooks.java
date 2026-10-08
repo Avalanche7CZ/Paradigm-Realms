@@ -8,6 +8,10 @@ public interface RealmsRuntimeHooks {
         @Override public void revalidateRealmPresence(RealmId realmId) {}
     };
 
+    default boolean realmEntryAllowed(RealmId realmId) { return true; }
+
+    default boolean realmOwnershipTransferAllowed(RealmId realmId) { return true; }
+
     void realmIndexChanged();
 
     void revalidateRealmPresence(RealmId realmId);

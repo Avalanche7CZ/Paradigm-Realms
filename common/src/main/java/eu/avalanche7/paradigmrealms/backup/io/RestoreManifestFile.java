@@ -8,12 +8,32 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.Collections;
+import java.util.Map;
+import java.util.TreeMap;
 
 import eu.avalanche7.paradigmrealms.backup.RestoreOperationManifest;
 import eu.avalanche7.paradigmrealms.backup.RestoreOperationManifestJsonCodec;
+import eu.avalanche7.paradigmrealms.backup.RestoreRecoveryPolicy;
 
 public final class RestoreManifestFile {
     private final RestoreOperationManifestJsonCodec codec = new RestoreOperationManifestJsonCodec();
+
+    public Map<Path, RestoreOperationManifest> readPending(Path directory, int maximumPending) throws IOException {
+        if (maximumPending < 1) throw new IllegalArgumentException("pending manifest limit must be positive");
+        Map<Path, RestoreOperationManifest> pending = new TreeMap<>();
+        try (var files = Files.list(directory)) {
+            var paths = files.filter(path -> path.getFileName().toString().endsWith(".json")).iterator();
+            while (paths.hasNext()) {
+                Path path = paths.next();
+                RestoreOperationManifest operation = read(path);
+                if (!RestoreRecoveryPolicy.requiresProtection(operation)) continue;
+                pending.put(path, operation);
+                if (pending.size() > maximumPending) throw new IOException("restore manifest recovery limit exceeded");
+            }
+        }
+        return Collections.unmodifiableMap(pending);
+    }
 
     public RestoreOperationManifest read(Path path) throws IOException {
         if (Files.isSymbolicLink(path) || !Files.isRegularFile(path)) {

@@ -8,7 +8,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,6 +26,7 @@ import eu.avalanche7.paradigmrealms.backup.RestoreManifestStage;
 import eu.avalanche7.paradigmrealms.backup.RestoreMode;
 import eu.avalanche7.paradigmrealms.backup.RestoreOperationManifest;
 import eu.avalanche7.paradigmrealms.backup.RestorePreparationResult;
+import eu.avalanche7.paradigmrealms.backup.RestoreRecoveryPolicy;
 import eu.avalanche7.paradigmrealms.backup.io.BackupArchiveVerifier;
 import eu.avalanche7.paradigmrealms.backup.io.RestoreManifestFile;
 import eu.avalanche7.paradigmrealms.domain.DimensionId;
@@ -58,6 +58,7 @@ final class FabricRestoreCoordinator {
     private final RestoreManifestFile manifestFile = new RestoreManifestFile();
     private final BackupArchiveVerifier verifier = new BackupArchiveVerifier();
     private final Map<Long, RealmBackupMutationLocks.Handle> restoreLocks = new HashMap<>();
+    private final java.util.Set<BackupId> preparingRestores = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final ArrayDeque<RuntimeVerification> runtimeVerifications = new ArrayDeque<>();
 
     FabricRestoreCoordinator(
@@ -89,7 +90,8 @@ final class FabricRestoreCoordinator {
     CompletableFuture<RestorePreparationResult> prepare(
             BackupId backupId,
             RestoreMode mode,
-            BackupActor actor) {
+            BackupActor actor,
+            boolean backupsEnabled) {
         if (mode != RestoreMode.WORLD_ONLY) {
             return CompletableFuture.completedFuture(RestorePreparationResult.failed(
                     RestorePreparationResult.Status.UNSUPPORTED_MODE,
@@ -103,26 +105,93 @@ final class FabricRestoreCoordinator {
                     "No backup exists with that ID."));
         }
 
+        Map.Entry<Path, RestoreOperationManifest> retry = null;
+        try {
+            if (entry.restoreInUse()) {
+                retry = pendingManifests().entrySet().stream()
+                        .filter(item -> item.getValue().backupId().equals(backupId))
+                        .filter(item -> RestoreRecoveryPolicy.canRetry(item.getValue()))
+                        .findFirst().orElse(null);
+            }
+        } catch (IOException | RuntimeException exception) {
+            return CompletableFuture.completedFuture(RestorePreparationResult.failed(
+                    RestorePreparationResult.Status.MANIFEST_WRITE_FAILED,
+                    "Could not read the failed restore manifest."));
+        }
+        if (!backupsEnabled && retry == null) {
+            return CompletableFuture.completedFuture(RestorePreparationResult.failed(
+                    RestorePreparationResult.Status.ROLLBACK_BACKUP_FAILED, "Realm backups are disabled."));
+        }
+        if ((entry.restoreInUse() && retry == null) || !preparingRestores.add(backupId)) {
+            return CompletableFuture.completedFuture(RestorePreparationResult.failed(
+                    RestorePreparationResult.Status.TARGET_BUSY,
+                    "This backup is already required by a restore operation."));
+        }
+        try {
+            if (!catalog.markRestoreInUse(backupId, true)) {
+                throw new IOException("Source backup disappeared before verification");
+            }
+        } catch (IOException exception) {
+            preparingRestores.remove(backupId);
+            return CompletableFuture.completedFuture(RestorePreparationResult.failed(
+                    RestorePreparationResult.Status.MANIFEST_WRITE_FAILED,
+                    "Could not protect the source backup for restore preparation."));
+        }
+
         CompletableFuture<RestorePreparationResult> result = new CompletableFuture<>();
+        Map.Entry<Path, RestoreOperationManifest> retryManifest = retry;
+        result.whenComplete((prepared, failure) -> {
+            preparingRestores.remove(backupId);
+            if (retryManifest == null
+                    && (failure != null || prepared.status() != RestorePreparationResult.Status.PREPARED)) {
+                try {
+                    catalog.markRestoreInUse(backupId, false);
+                } catch (IOException exception) {
+                    ParadigmRealms.LOGGER.error("Could not release source backup protection", exception);
+                }
+            }
+        });
         Path archive = paths.backupRoot().resolve(entry.archiveRelativePath());
-        CompletableFuture
-                .supplyAsync(() -> verifier.verify(archive), fileExecutor)
-                .whenComplete((verification, failure) -> server.execute(() -> {
-                    if (failure != null || !verification.valid()) {
+        try {
+            CompletableFuture
+                    .supplyAsync(() -> verifier.verify(archive), fileExecutor)
+                    .whenComplete((verification, failure) -> server.execute(() -> {
+                        if (failure != null || !verification.valid()) {
+                            result.complete(RestorePreparationResult.failed(
+                                    RestorePreparationResult.Status.BACKUP_INVALID,
+                                    "The backup failed integrity verification."));
+                            return;
+                        }
+                        BackupManifest manifest = verification.manifest().orElseThrow();
+                        if (!catalogMatchesManifest(entry, manifest)) {
+                            result.complete(RestorePreparationResult.failed(
+                                    RestorePreparationResult.Status.BACKUP_INVALID,
+                                    "The catalog entry does not match the archive manifest."));
+                            return;
+                        }
+                        try {
+                            if (retryManifest != null) {
+                                retryPreparation(retryManifest.getKey(), manifest, actor, result);
+                            } else {
+                                prepareVerified(entry, manifest, mode, actor, result);
+                            }
+                        } catch (RuntimeException exception) {
+                            result.complete(RestorePreparationResult.failed(
+                                    RestorePreparationResult.Status.ROLLBACK_BACKUP_FAILED,
+                                    "Could not start rollback backup: " + exception.getMessage()));
+                        }
+                    }))
+                    .exceptionally(dispatchFailure -> {
                         result.complete(RestorePreparationResult.failed(
                                 RestorePreparationResult.Status.BACKUP_INVALID,
-                                "The backup failed integrity verification."));
-                        return;
-                    }
-                    BackupManifest manifest = verification.manifest().orElseThrow();
-                    if (!catalogMatchesManifest(entry, manifest)) {
-                        result.complete(RestorePreparationResult.failed(
-                                RestorePreparationResult.Status.BACKUP_INVALID,
-                                "The catalog entry does not match the archive manifest."));
-                        return;
-                    }
-                    prepareVerified(entry, manifest, mode, actor, result);
-                }));
+                                "Could not deliver backup verification to the server."));
+                        return null;
+                    });
+        } catch (RuntimeException exception) {
+            result.complete(RestorePreparationResult.failed(
+                    RestorePreparationResult.Status.BACKUP_INVALID,
+                    "Could not start backup verification."));
+        }
         return result;
     }
 
@@ -147,15 +216,16 @@ final class FabricRestoreCoordinator {
 
     boolean cancel(BackupId backupId) {
         try {
-            List<Path> manifests = manifestPaths();
-            if (manifests.size() > MAXIMUM_MANIFESTS) {
-                throw new IOException("restore manifest limit exceeded");
-            }
-            for (Path path : manifests) {
-                RestoreOperationManifest operation = manifestFile.read(path);
-                if (!operation.backupId().equals(backupId) || !canCancel(operation.stage())) {
+            if (preparingRestores.contains(backupId)) return false;
+            for (var item : pendingManifests().entrySet()) {
+                Path path = item.getKey();
+                RestoreOperationManifest operation = item.getValue();
+                if (!operation.backupId().equals(backupId) || !RestoreRecoveryPolicy.canCancel(operation)) {
                     continue;
                 }
+                Path quarantine = eu.avalanche7.paradigmrealms.backup.io.BackupPathSafety.resolveInside(
+                        paths.worldRoot(), operation.quarantineRelativePath(), true);
+                if (Files.exists(quarantine, LinkOption.NOFOLLOW_LINKS)) return false;
 
                 manifestFile.write(
                         path,
@@ -178,6 +248,49 @@ final class FabricRestoreCoordinator {
         return false;
     }
 
+    private void retryPreparation(Path path, BackupManifest source, BackupActor actor,
+            CompletableFuture<RestorePreparationResult> result) {
+        RestoreOperationManifest retried = null;
+        try {
+            RestoreOperationManifest operation = manifestFile.read(path);
+            Realm target = realms.findById(new RealmId(operation.realmId())).orElse(null);
+            if (!RestoreRecoveryPolicy.canRetry(operation)
+                    || !RestoreRecoveryPolicy.matchesTarget(operation, target, worldIdentity)
+                    || !matchesTarget(target, source)
+                    || !operation.backupId().equals(source.backupId())
+                    || !restoreLocks.containsKey(operation.realmId())) {
+                result.complete(RestorePreparationResult.failed(RestorePreparationResult.Status.TARGET_MISMATCH,
+                        "Failed restore target changed before retry preparation."));
+                return;
+            }
+            if (!evacuate(target)) {
+                result.complete(RestorePreparationResult.failed(RestorePreparationResult.Status.EVACUATION_FAILED,
+                        "One or more occupants could not be evacuated safely."));
+                return;
+            }
+            if (!server.saveAll(false, true, true)) throw new IOException("Minecraft save barrier reported failure");
+            RestoreOperationManifest replacement = RestoreRecoveryPolicy.retry(
+                    operation, target, worldIdentity, realmStateDigest(), clock.instant());
+            if (!catalog.pin(operation.rollbackBackupId(), true)
+                    || !catalog.markRestoreInUse(operation.backupId(), true)) {
+                throw new IOException("A protected restore backup disappeared before retry");
+            }
+            manifestFile.write(path, replacement);
+            retried = replacement;
+            presence.revalidateRealm(target.id());
+            auditRestore(replacement, actor.uuid(), "RESTORE_PREPARED", "RETRIED");
+            result.complete(RestorePreparationResult.prepared(replacement.operationId(), replacement.rollbackBackupId()));
+        } catch (IOException | RuntimeException exception) {
+            if (retried != null) {
+                ParadigmRealms.LOGGER.error("Restore retry was prepared but post-preparation effects failed", exception);
+                result.complete(RestorePreparationResult.prepared(retried.operationId(), retried.rollbackBackupId()));
+            } else {
+                result.complete(RestorePreparationResult.failed(RestorePreparationResult.Status.MANIFEST_WRITE_FAILED,
+                        "Could not prepare failed restore retry: " + exception.getMessage()));
+            }
+        }
+    }
+
     private void prepareVerified(
             BackupCatalogEntry sourceEntry,
             BackupManifest manifest,
@@ -198,21 +311,22 @@ final class FabricRestoreCoordinator {
             return;
         }
 
-        rollbackRequester.request(target, BackupReason.PRE_MANUAL_RESTORE, actor,
-                (successful, rollbackEntry) -> {
-                    if (!successful || rollbackEntry.isEmpty()) {
+        eu.avalanche7.paradigmrealms.backup.RollbackBackupRequest.start(completion ->
+                rollbackRequester.request(target, BackupReason.PRE_MANUAL_RESTORE, actor, completion::completed))
+                .whenComplete((rollback, failure) -> {
+                    if (failure != null) {
                         result.complete(RestorePreparationResult.failed(
                                 RestorePreparationResult.Status.ROLLBACK_BACKUP_FAILED,
                                 "The current realm could not be backed up, so the restore was not prepared."));
                         return;
                     }
-                    finishPreparation(
-                            sourceEntry,
-                            manifest,
-                            mode,
-                            actor,
-                            rollbackEntry.orElseThrow(),
-                            result);
+                    try {
+                        finishPreparation(sourceEntry, manifest, mode, actor, rollback, result);
+                    } catch (RuntimeException exception) {
+                        result.complete(RestorePreparationResult.failed(
+                                RestorePreparationResult.Status.MANIFEST_WRITE_FAILED,
+                                "Could not prepare restore: " + exception.getMessage()));
+                    }
                 });
     }
 
@@ -231,6 +345,18 @@ final class FabricRestoreCoordinator {
             return;
         }
 
+        try {
+            if (pendingManifests().size() >= MAXIMUM_MANIFESTS) {
+                result.complete(RestorePreparationResult.failed(RestorePreparationResult.Status.TARGET_BUSY,
+                        "The maximum number of unresolved restores has been reached."));
+                return;
+            }
+        } catch (IOException | RuntimeException exception) {
+            result.complete(RestorePreparationResult.failed(RestorePreparationResult.Status.MANIFEST_WRITE_FAILED,
+                    "Could not read pending restore manifests."));
+            return;
+        }
+
         UUID operationId = UUID.randomUUID();
         BackupCellBounds bounds = sourceManifest.cellBounds();
         RealmBackupMutationLocks.Handle lock = locks.tryAcquireRestore(
@@ -244,48 +370,58 @@ final class FabricRestoreCoordinator {
             return;
         }
 
-        if (!evacuate(target)) {
-            lock.close();
-            result.complete(RestorePreparationResult.failed(
-                    RestorePreparationResult.Status.EVACUATION_FAILED,
-                    "One or more occupants could not be evacuated safely."));
-            return;
-        }
-
-        Instant now = clock.instant();
-        RestoreOperationManifest operation = new RestoreOperationManifest(
-                RestoreOperationManifest.CURRENT_VERSION,
-                operationId,
-                sourceManifest.backupId(),
-                target.id().value(),
-                target.owner().uuid(),
-                bounds,
-                DimensionId.REALMS.toString(),
-                sourceManifest.allocationProfile(),
-                sourceManifest.strategy(),
-                worldIdentity,
-                realmStateDigest(),
-                sourceEntry.archiveRelativePath(),
-                "dimensions/paradigm_realms/realms",
-                "backups/paradigm-realms/quarantine/" + operationId,
-                rollback.backupId(),
-                mode,
-                RestoreManifestStage.SERVER_STOPPED_EXPECTED,
-                now,
-                now,
-                Optional.empty(),
-                Optional.empty());
-
+        boolean manifestWritten = false;
         try {
-            catalog.pin(rollback.backupId(), true);
-            catalog.markRestoreInUse(sourceEntry.backupId(), true);
+            if (!evacuate(target)) {
+                lock.close();
+                result.complete(RestorePreparationResult.failed(
+                        RestorePreparationResult.Status.EVACUATION_FAILED,
+                        "One or more occupants could not be evacuated safely."));
+                return;
+            }
+
+            Instant now = clock.instant();
+            RestoreOperationManifest operation = new RestoreOperationManifest(
+                    RestoreOperationManifest.CURRENT_VERSION,
+                    operationId,
+                    sourceManifest.backupId(),
+                    target.id().value(),
+                    target.owner().uuid(),
+                    bounds,
+                    DimensionId.REALMS.toString(),
+                    sourceManifest.allocationProfile(),
+                    sourceManifest.strategy(),
+                    worldIdentity,
+                    realmStateDigest(),
+                    sourceEntry.archiveRelativePath(),
+                    "dimensions/paradigm_realms/realms",
+                    "backups/paradigm-realms/quarantine/" + operationId,
+                    rollback.backupId(),
+                    mode,
+                    RestoreManifestStage.SERVER_STOPPED_EXPECTED,
+                    now,
+                    now,
+                    Optional.empty(),
+                    Optional.empty());
+
+            if (!catalog.pin(rollback.backupId(), true)
+                    || !catalog.markRestoreInUse(sourceEntry.backupId(), true)) {
+                throw new IOException("A restore backup disappeared before preparation completed");
+            }
             Path manifestPath = manifestPath(operationId);
             manifestFile.write(manifestPath, operation);
+            manifestWritten = true;
             restoreLocks.put(target.id().value(), lock);
             presence.revalidateRealm(target.id());
             auditRestore(operation, actor.uuid(), "RESTORE_PREPARED", "PREPARED");
             result.complete(RestorePreparationResult.prepared(operationId, rollback.backupId()));
-        } catch (IOException exception) {
+        } catch (IOException | RuntimeException exception) {
+            if (manifestWritten) {
+                ParadigmRealms.LOGGER.error("Restore {} was prepared but post-preparation effects failed", operationId, exception);
+                result.complete(RestorePreparationResult.prepared(operationId, rollback.backupId()));
+                return;
+            }
+            restoreLocks.remove(target.id().value());
             lock.close();
             clearPreparationFlags(sourceEntry.backupId(), rollback.backupId());
             result.complete(RestorePreparationResult.failed(
@@ -295,33 +431,25 @@ final class FabricRestoreCoordinator {
     }
 
     private void recoverManifests() throws IOException {
-        List<Path> manifests = manifestPaths();
-        if (manifests.size() > MAXIMUM_MANIFESTS) {
-            throw new IOException("restore manifest recovery limit exceeded");
+        Map<Path, RestoreOperationManifest> recovered = pendingManifests();
+        java.util.Set<BackupId> protectedSources = new java.util.HashSet<>();
+        for (RestoreOperationManifest operation : recovered.values()) {
+            protectedSources.add(operation.backupId());
+        }
+        for (BackupCatalogEntry entry : catalog.list()) {
+            if (entry.restoreInUse() && !protectedSources.contains(entry.backupId())) {
+                catalog.markRestoreInUse(entry.backupId(), false);
+            }
         }
 
-        for (Path path : manifests) {
-            RestoreOperationManifest operation = manifestFile.read(path);
-            if (operation.stage() == RestoreManifestStage.COMPLETED
-                    || operation.stage() == RestoreManifestStage.FAILED) {
-                continue;
-            }
+        for (var item : recovered.entrySet()) {
+            Path path = item.getKey();
+            RestoreOperationManifest operation = item.getValue();
+            catalog.markRestoreInUse(operation.backupId(), true);
+            catalog.pin(operation.rollbackBackupId(), true);
             Realm realm = realms.findById(new RealmId(operation.realmId())).orElse(null);
-            if (realm == null
-                    || !realm.allocation().profile().value().equals(operation.allocationProfile())
-                    || !BackupCellBounds.from(realm.allocation().cellBounds())
-                            .equals(operation.targetBounds())) {
-                manifestFile.write(
-                        path,
-                        operation.failed(
-                                "STARTUP_TARGET_MISMATCH",
-                                "Realm identity or allocation changed before restore recovery.",
-                                clock.instant()));
-                ParadigmRealms.LOGGER.error(
-                        "Restore operation {} failed startup recovery because its target changed",
-                        operation.operationId());
-                catalog.markRestoreInUse(operation.backupId(), false);
-                continue;
+            if (!RestoreRecoveryPolicy.matchesTarget(operation, realm, worldIdentity)) {
+                throw new IOException("Unresolved restore target changed for operation " + operation.operationId());
             }
 
             RealmBackupMutationLocks.Handle handle = locks.tryAcquireRestore(
@@ -329,14 +457,7 @@ final class FabricRestoreCoordinator {
                     operation.targetBounds(),
                     operation.operationId()).orElse(null);
             if (handle == null) {
-                manifestFile.write(
-                        path,
-                        operation.failed(
-                                "STARTUP_RESTORE_CONFLICT",
-                                "Another restore manifest already controls this realm.",
-                                clock.instant()));
-                catalog.markRestoreInUse(operation.backupId(), false);
-                continue;
+                throw new IOException("Conflicting unresolved restores for realm " + realm.id().value());
             }
             restoreLocks.put(realm.id().value(), handle);
 
@@ -378,20 +499,8 @@ final class FabricRestoreCoordinator {
         presence.revalidateRealm(new RealmId(operation.realmId()));
     }
 
-    private List<Path> manifestPaths() throws IOException {
-        Path directory = paths.restoreManifestDirectory();
-        try (var files = Files.list(directory)) {
-            return files
-                    .filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
-                    .filter(path -> path.getFileName().toString().endsWith(".json"))
-                    .limit(MAXIMUM_MANIFESTS + 1L)
-                    .toList();
-        }
-    }
-
-    private static boolean canCancel(RestoreManifestStage stage) {
-        return stage == RestoreManifestStage.PREPARED
-                || stage == RestoreManifestStage.SERVER_STOPPED_EXPECTED;
+    private Map<Path, RestoreOperationManifest> pendingManifests() throws IOException {
+        return manifestFile.readPending(paths.restoreManifestDirectory(), MAXIMUM_MANIFESTS);
     }
 
     private void finishRuntimeVerification(RuntimeVerification verification) {
@@ -545,7 +654,7 @@ final class FabricRestoreCoordinator {
 
     @FunctionalInterface
     interface RollbackRequester {
-        void request(
+        eu.avalanche7.paradigmrealms.backup.BackupRequestResult request(
                 Realm realm,
                 BackupReason reason,
                 BackupActor actor,

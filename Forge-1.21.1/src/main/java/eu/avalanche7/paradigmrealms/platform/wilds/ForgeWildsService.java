@@ -141,10 +141,17 @@ public final class ForgeWildsService {
     public WildsConfig config() { return config; }
 
     public void updateConfig(WildsConfig replacement) {
-        this.config = java.util.Objects.requireNonNull(replacement, "replacement");
+        java.util.Objects.requireNonNull(replacement, "replacement");
+        if (replacement.enabled() && !WildsBootContext.enabled()) return;
+        this.config = replacement;
+        if (!config.enabled()) rtp.cancelAll("Wilds disabled");
     }
 
     public void tick() {
+        if (!config.enabled()) {
+            rtp.cancelAll("Wilds disabled");
+            return;
+        }
         tickSchedule();
         if (lifecycle.state().lifecycle() == WildsLifecycleState.EVACUATING && !preparingReset) {
             continueEvacuationAndPrepare();
@@ -207,6 +214,7 @@ public final class ForgeWildsService {
     }
 
     public WildsActionResult scheduleReset(Instant when) {
+        if (!config.enabled()) return WildsActionResult.DISABLED;
         boolean profileValid = generationValidator.validateProfileResource(
                 server, config.generationProfile()).isEmpty();
         WildsActionResult result = schedule.schedule(when, profileValid);
@@ -226,16 +234,19 @@ public final class ForgeWildsService {
     }
 
     public WildsActionResult closeEntry() {
+        if (!config.enabled()) return WildsActionResult.DISABLED;
         try { lifecycle.closeEntry(); rtp.cancelAll("Wilds entry closed"); return WildsActionResult.SUCCESS; }
         catch (RuntimeException exception) { return WildsActionResult.INVALID_STATE; }
     }
 
     public WildsActionResult openEntry() {
+        if (!config.enabled()) return WildsActionResult.DISABLED;
         try { lifecycle.openEntry(); return WildsActionResult.SUCCESS; }
         catch (RuntimeException exception) { return WildsActionResult.INVALID_STATE; }
     }
 
     public WildsActionResult prepareReset() {
+        if (!config.enabled()) return WildsActionResult.DISABLED;
         WildsState state = lifecycle.state();
         try {
             if (state.lifecycle() == WildsLifecycleState.RESET_SCHEDULED) lifecycle.blockEntry();
@@ -251,6 +262,7 @@ public final class ForgeWildsService {
     }
 
     public WildsActionResult retryVerification() {
+        if (!config.enabled()) return WildsActionResult.DISABLED;
         try { lifecycle.beginVerification(); verifyPendingGeneration(); return lifecycle.state().lifecycle() == WildsLifecycleState.ACTIVE
                 ? WildsActionResult.SUCCESS : WildsActionResult.UNVERIFIED; }
         catch (RuntimeException | IOException exception) { fail("VERIFICATION_RETRY_FAILED", exception.getMessage()); return WildsActionResult.UNVERIFIED; }
@@ -273,6 +285,7 @@ public final class ForgeWildsService {
     }
 
     public String terrainSample(int centerX, int centerZ) {
+        if (!config.enabled()) throw new IllegalStateException("Wilds is disabled");
         ServerWorld world = requireWorld();
         ChunkCoordinate chunk = new ChunkCoordinate(
                 Math.floorDiv(centerX, 16), Math.floorDiv(centerZ, 16));
@@ -300,6 +313,7 @@ public final class ForgeWildsService {
     }
 
     public WildsActionResult setSpawn(ServerPlayerEntity player) {
+        if (!config.enabled()) return WildsActionResult.DISABLED;
         WildsState state = lifecycle.state();
         if (state.lifecycle() != WildsLifecycleState.ACTIVE) return WildsActionResult.ENTRY_BLOCKED;
         if (!isWilds(player.getWorld())) return WildsActionResult.NOT_IN_WILDS;
@@ -313,6 +327,7 @@ public final class ForgeWildsService {
 
     public boolean mutationAllowed(ServerPlayerEntity player, World world, BlockPos target) {
         if (!isWilds(world)) return true;
+        if (!config.enabled()) return false;
         WildsState state = lifecycle.state();
         if ((state.lifecycle() != WildsLifecycleState.ACTIVE
                 && state.lifecycle() != WildsLifecycleState.RESET_SCHEDULED)
@@ -328,6 +343,7 @@ public final class ForgeWildsService {
 
     public boolean environmentalMutationAllowed(World world, BlockPos target) {
         if (!isWilds(world)) return true;
+        if (!config.enabled()) return false;
         WildsState state = lifecycle.state();
         if (state.lifecycle() != WildsLifecycleState.ACTIVE
                 && state.lifecycle() != WildsLifecycleState.RESET_SCHEDULED) return false;
@@ -348,7 +364,7 @@ public final class ForgeWildsService {
     }
 
     public int pruneBackups() throws IOException {
-        if (state().lifecycle() != WildsLifecycleState.ACTIVE || !state().generationVerified()) {
+        if (!config.enabled() || state().lifecycle() != WildsLifecycleState.ACTIVE || !state().generationVerified()) {
             throw new IOException("backups may only be pruned after successful verification");
         }
         return backups.prune(worldRoot(), config.backupRetentionCount());
@@ -505,25 +521,30 @@ public final class ForgeWildsService {
     }
 
     private WildsSpawn resolveSpawn(ServerWorld world, long epoch) {
-        BlockPos configured = world.getSpawnPos();
-        for (int attempt = 0; attempt < 32; attempt++) {
-            int ring = attempt / 8;
-            int x = configured.getX() + ((attempt % 3) - 1) * ring * 16;
-            int z = configured.getZ() + (((attempt / 3) % 3) - 1) * ring * 16;
-            ChunkCoordinate chunk = new ChunkCoordinate(Math.floorDiv(x, 16), Math.floorDiv(z, 16));
-            try (ChunkLease ignored = realms.serverPlatform().chunks().acquire(ChunkLoadRequest.one(
-                    DimensionId.WILDS, chunk, ChunkLoadPurpose.WILDS_SPAWN, true))) {
-                BlockPos top = world.getTopPosition(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES,
-                        new BlockPos(x, world.getBottomY(), z));
-                if (isSafe(world, top)) return new WildsSpawn(epoch, top.getX() + 0.5, top.getY(),
-                        top.getZ() + 0.5, 0, 0);
-            } catch (ChunkAccessFailure failure) {
-                if (failure.reason() == ChunkAccessFailure.Reason.WORLD_UNAVAILABLE) {
-                    throw new IllegalStateException("Wilds dimension became unavailable", failure);
-                }
-            }
-        }
-        throw new IllegalStateException("bounded Wilds spawn search found no safe position");
+        BlockPos origin = world.getSpawnPos();
+        return new eu.avalanche7.paradigmrealms.wilds.WildsSpawnResolver().resolve(epoch,
+                new BlockCoordinate(origin.getX(), origin.getY(), origin.getZ()),
+                new eu.avalanche7.paradigmrealms.platform.wilds.WildsSpawnPort() {
+                    @Override public Optional<BlockCoordinate> findSafeSurface(int x, int z) {
+                        if (!world.getWorldBorder().contains(new BlockPos(x, world.getBottomY(), z))) {
+                            return Optional.empty();
+                        }
+                        try (ChunkLease ignored = realms.serverPlatform().chunks().acquire(new ChunkLoadRequest(
+                                DimensionId.WILDS, Set.of(new ChunkCoordinate(Math.floorDiv(x, 16), Math.floorDiv(z, 16))),
+                                ChunkLoadPurpose.WILDS_SPAWN, true))) {
+                            BlockPos top = world.getTopPosition(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES,
+                                    new BlockPos(x, world.getBottomY(), z));
+                            return isSafe(world, top)
+                                    ? Optional.of(new BlockCoordinate(x, top.getY(), z)) : Optional.empty();
+                        } catch (ChunkAccessFailure failure) {
+                            if (failure.reason() == ChunkAccessFailure.Reason.WORLD_UNAVAILABLE) {
+                                throw new IllegalStateException("Wilds dimension became unavailable", failure);
+                            }
+                            return Optional.empty();
+                        }
+                    }
+
+                });
     }
 
     private boolean isSafe(ServerWorld world, BlockPos feet) {
@@ -556,7 +577,7 @@ public final class ForgeWildsService {
     }
 
     private WildsEntryDecision entryDecision(ServerPlayerEntity player, boolean savedJoin) {
-        return entryPolicy.evaluate(lifecycle.state(), player.getUuid(),
+        return entryPolicy.evaluate(lifecycle.state(), player.getUuid(), config.enabled(),
                 has(player, RealmPermissionNodes.WILDS_ENTER), savedJoin);
     }
 

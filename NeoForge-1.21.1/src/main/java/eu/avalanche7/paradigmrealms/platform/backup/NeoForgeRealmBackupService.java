@@ -162,7 +162,7 @@ public final class NeoForgeRealmBackupService implements AutoCloseable {
             BackupReason reason,
             BackupActor actor,
             CompletionHandler completionHandler) {
-        if (!config.enabled()) {
+        if (closed || !config.enabled()) {
             return BackupRequestResult.rejected(BackupFailure.CANCELLED, "Realm backups are disabled.");
         }
         if (!eligible(realm, reason)) {
@@ -218,11 +218,9 @@ public final class NeoForgeRealmBackupService implements AutoCloseable {
     }
 
     public void tick() {
-        if (closed || !config.enabled()) {
-            return;
-        }
-
+        if (closed) return;
         restores.tick();
+        if (!config.enabled()) return;
 
         if (++schedulerTicks >= SCHEDULER_INTERVAL_TICKS) {
             schedulerTicks = 0;
@@ -240,7 +238,8 @@ public final class NeoForgeRealmBackupService implements AutoCloseable {
                 visibleActiveOperation(),
                 scheduler.nextDue(),
                 catalog.size(),
-                locks.activeCount());
+                locks.activeCount(),
+                packagingOperations.size() + (activeOperation == null ? 0 : 1));
     }
 
     public List<BackupCatalogEntry> list() {
@@ -338,7 +337,13 @@ public final class NeoForgeRealmBackupService implements AutoCloseable {
                     BackupId backupId,
                     eu.avalanche7.paradigmrealms.backup.RestoreMode mode,
                     BackupActor actor) {
-        return restores.prepare(backupId, mode, actor);
+        if (closed) {
+            return CompletableFuture.completedFuture(
+                    eu.avalanche7.paradigmrealms.backup.RestorePreparationResult.failed(
+                            eu.avalanche7.paradigmrealms.backup.RestorePreparationResult.Status.ROLLBACK_BACKUP_FAILED,
+                            "The server is stopping."));
+        }
+        return restores.prepare(backupId, mode, actor, config.enabled());
     }
 
     public boolean cancelRestore(BackupId backupId) {
@@ -415,7 +420,13 @@ public final class NeoForgeRealmBackupService implements AutoCloseable {
         }
 
         BackupCellBounds bounds = BackupCellBounds.from(realm.allocation().cellBounds());
-        activeOperation = transition(queued, BackupLifecycleState.LOCKING);
+        try {
+            activeOperation = transition(queued, BackupLifecycleState.LOCKING);
+        } catch (RuntimeException exception) {
+            activeOperation = null;
+            fail(queued, BackupFailure.CAPTURE_FAILED, rootMessage(exception));
+            return;
+        }
         Optional<RealmBackupMutationLocks.Handle> handle = locks.tryAcquire(
                 realm.id().value(),
                 bounds,
@@ -426,30 +437,30 @@ public final class NeoForgeRealmBackupService implements AutoCloseable {
             return;
         }
 
-        notifier.captureStarted(realm);
         NeoForgeBackupCaptureContext context;
         try {
             context = captureContext(realm, queued, bounds, handle.orElseThrow());
         } catch (IOException | RuntimeException exception) {
             handle.orElseThrow().close();
-            fail(queued, BackupFailure.CAPTURE_FAILED, exception.getMessage());
             activeOperation = null;
+            fail(queued, BackupFailure.CAPTURE_FAILED, rootMessage(exception));
             return;
         }
 
-        activeOperation = transition(activeOperation, BackupLifecycleState.FLUSHING);
-        activeOperation = transition(activeOperation, BackupLifecycleState.CAPTURING);
-        audit(activeOperation, "BACKUP_CAPTURE_STARTED", "STARTED", Map.of(), false);
-
-        storage.capture(
-                        context.world(),
-                        bounds,
-                        context.stagingDirectory(),
-                        eu.avalanche7.paradigmrealms.backup.BackupStrategySelector.select(realm.allocation()),
-                        config.captureTimeout(),
-                        (captured, total) -> notifier.progress(realm, captured, total))
-                .whenComplete((captured, failure) -> server.execute(() ->
-                        finishCapture(context, captured, failure)));
+        eu.avalanche7.paradigmrealms.backup.BackupCaptureTask.start(context.lock()::close, () -> {
+            notifier.captureStarted(realm);
+            activeOperation = transition(activeOperation, BackupLifecycleState.FLUSHING);
+            activeOperation = transition(activeOperation, BackupLifecycleState.CAPTURING);
+            audit(activeOperation, "BACKUP_CAPTURE_STARTED", "STARTED", Map.of(), false);
+            return storage.capture(
+                    context.world(),
+                    bounds,
+                    context.stagingDirectory(),
+                    eu.avalanche7.paradigmrealms.backup.BackupStrategySelector.select(realm.allocation()),
+                    config.captureTimeout(),
+                    (captured, total) -> notifier.progress(realm, captured, total));
+        }).whenComplete((captured, failure) -> server.execute(() ->
+                finishCapture(context, captured, failure)));
     }
 
     private NeoForgeBackupCaptureContext captureContext(
@@ -469,21 +480,28 @@ public final class NeoForgeRealmBackupService implements AutoCloseable {
             NeoForgeBackupCaptureContext context,
             NeoForgeBackupStorageAccess.CapturedChunks captured,
             Throwable failure) {
-        context.lock().close();
-        if (failure != null) {
-            fail(context.operation(), BackupFailure.CAPTURE_FAILED, rootMessage(failure));
-            activeOperation = null;
-            notifier.failed(context.realm(), context.operation().reason());
+        BackupOperation operation = activeOperation == null ? context.operation() : activeOperation;
+        activeOperation = null;
+        if (failure != null || closed) {
+            fail(operation, closed ? BackupFailure.CANCELLED : BackupFailure.CAPTURE_FAILED,
+                    closed ? "server stopped before capture completed" : rootMessage(failure));
+            notifier.failed(context.realm(), operation.reason());
             return;
         }
 
-        BackupOperation packaging = transition(activeOperation, BackupLifecycleState.PACKAGING);
-        packagingOperations.put(packaging.backupId(), packaging);
-        activeOperation = null;
-        CompletableFuture
-                .supplyAsync(() -> packageBackup(context, captured), fileExecutor)
-                .whenComplete((result, packageFailure) -> server.execute(() ->
-                        finishPackaging(context, packaging, captured, result, packageFailure)));
+        try {
+            BackupOperation packaging = transition(operation, BackupLifecycleState.PACKAGING);
+            packagingOperations.put(packaging.backupId(), packaging);
+            CompletableFuture
+                    .supplyAsync(() -> packageBackup(context, captured), fileExecutor)
+                    .whenComplete((result, packageFailure) -> server.execute(() ->
+                            finishPackaging(context, packaging, captured, result, packageFailure)));
+        } catch (RuntimeException exception) {
+            packagingOperations.remove(operation.backupId());
+            cleanupStaging(context.stagingDirectory());
+            fail(operation, BackupFailure.PACKAGE_FAILED, rootMessage(exception));
+            notifier.failed(context.realm(), operation.reason());
+        }
     }
 
     private NeoForgeBackupPackager.PackagedBackup packageBackup(
@@ -510,8 +528,8 @@ public final class NeoForgeRealmBackupService implements AutoCloseable {
             return;
         }
 
-        BackupOperation verifying = transition(operation, BackupLifecycleState.VERIFYING);
         try {
+            BackupOperation verifying = transition(operation, BackupLifecycleState.VERIFYING);
             BackupCatalogEntry entry = packager.catalogEntry(packaged);
             catalog.add(entry);
             BackupOperation completed = transition(verifying, BackupLifecycleState.COMPLETED);
@@ -523,7 +541,7 @@ public final class NeoForgeRealmBackupService implements AutoCloseable {
             complete(completed.backupId(), true, Optional.of(entry));
             prune(false);
         } catch (IOException | RuntimeException exception) {
-            fail(verifying, BackupFailure.CATALOG_FAILED, exception.getMessage());
+            fail(operation, BackupFailure.CATALOG_FAILED, rootMessage(exception));
             notifier.failed(context.realm(), operation.reason());
         } finally {
             packagingOperations.remove(operation.backupId());
@@ -915,7 +933,11 @@ public final class NeoForgeRealmBackupService implements AutoCloseable {
             Optional<BackupCatalogEntry> entry) {
         CompletionHandler handler = completionHandlers.remove(backupId);
         if (handler != null) {
-            handler.completed(successful, entry);
+            try {
+                handler.completed(successful, entry);
+            } catch (RuntimeException exception) {
+                ParadigmRealms.LOGGER.error("Backup completion handler failed for {}", backupId, exception);
+            }
         }
     }
 

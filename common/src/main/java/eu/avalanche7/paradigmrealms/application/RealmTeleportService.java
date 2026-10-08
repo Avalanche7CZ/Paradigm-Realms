@@ -2,6 +2,9 @@ package eu.avalanche7.paradigmrealms.application;
 
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Predicate;
+
+import eu.avalanche7.paradigmrealms.domain.RealmId;
 
 import eu.avalanche7.paradigmrealms.domain.DimensionId;
 import eu.avalanche7.paradigmrealms.domain.realm.Realm;
@@ -19,14 +22,20 @@ import eu.avalanche7.paradigmrealms.region.BlockPosition;
 
 public final class RealmTeleportService {
     private final RealmsServerPlatformAdapter platform;
+    private final Predicate<RealmId> realmEntryAllowed;
 
     public RealmTeleportService(RealmsServerPlatformAdapter platform) {
+        this(platform, realmId -> true);
+    }
+
+    public RealmTeleportService(RealmsServerPlatformAdapter platform, Predicate<RealmId> realmEntryAllowed) {
         this.platform = Objects.requireNonNull(platform, "platform");
+        this.realmEntryAllowed = Objects.requireNonNull(realmEntryAllowed, "realmEntryAllowed");
     }
 
     public TeleportResult teleportToRealm(UUID player, Realm realm) {
         Objects.requireNonNull(realm, "realm");
-        if (realm.state() != RealmLifecycleState.ACTIVE) return TeleportResult.REALM_NOT_ACTIVE;
+        if (realm.state() != RealmLifecycleState.ACTIVE || !realmEntryAllowed.test(realm.id())) return TeleportResult.REALM_NOT_ACTIVE;
         if (!realm.allocation().buildableBounds().contains(realm.spawn().chunk())) {
             return TeleportResult.OUTSIDE_BOUNDS;
         }

@@ -17,10 +17,14 @@ public final class StartupValidationService {
     }
 
     public ValidationReport validate(Set<DimensionId> loadedDimensions) {
+        return validate(loadedDimensions, true);
+    }
+
+    public ValidationReport validate(Set<DimensionId> loadedDimensions, boolean wildsEnabled) {
         Objects.requireNonNull(loadedDimensions, "loadedDimensions");
         ArrayList<ValidationIssue> issues = new ArrayList<>(repository.validate().issues());
         requireDimension(loadedDimensions, DimensionId.REALMS, issues);
-        requireDimension(loadedDimensions, DimensionId.WILDS, issues);
+        if (wildsEnabled) requireDimension(loadedDimensions, DimensionId.WILDS, issues);
         requireDimension(loadedDimensions, DimensionId.OVERWORLD, issues);
         return new ValidationReport(issues);
     }

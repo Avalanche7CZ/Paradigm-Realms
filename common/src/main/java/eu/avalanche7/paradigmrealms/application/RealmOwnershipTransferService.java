@@ -9,8 +9,10 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.function.Predicate;
 
 import eu.avalanche7.paradigmrealms.domain.CreationTimestamp;
+import eu.avalanche7.paradigmrealms.domain.RealmId;
 import eu.avalanche7.paradigmrealms.domain.RealmOwner;
 import eu.avalanche7.paradigmrealms.domain.realm.Realm;
 import eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState;
@@ -25,6 +27,7 @@ public final class RealmOwnershipTransferService {
     private final Supplier<UUID> operationIds;
     private final Duration expiry;
     private final PreviousOwnerRole previousOwnerRole;
+    private final Predicate<RealmId> transferAllowed;
 
     public RealmOwnershipTransferService(
             RealmRepository repository,
@@ -32,18 +35,26 @@ public final class RealmOwnershipTransferService {
             Supplier<UUID> operationIds,
             Duration expiry,
             PreviousOwnerRole previousOwnerRole) {
+        this(repository, clock, operationIds, expiry, previousOwnerRole, realmId -> true);
+    }
+
+    public RealmOwnershipTransferService(
+            RealmRepository repository, Clock clock, Supplier<UUID> operationIds, Duration expiry,
+            PreviousOwnerRole previousOwnerRole, Predicate<RealmId> transferAllowed) {
         this.repository = Objects.requireNonNull(repository, "repository");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.operationIds = Objects.requireNonNull(operationIds, "operationIds");
         this.expiry = Objects.requireNonNull(expiry, "expiry");
         this.previousOwnerRole = Objects.requireNonNull(previousOwnerRole, "previousOwnerRole");
+        this.transferAllowed = Objects.requireNonNull(transferAllowed, "transferAllowed");
         if (expiry.isZero() || expiry.isNegative()) throw new IllegalArgumentException("transfer expiry must be positive");
     }
 
     public Result offer(UUID owner, String ownerName, UUID target, String targetName) {
         Realm realm = repository.findByOwner(owner).orElse(null);
         if (realm == null) return Result.of(Status.NO_REALM);
-        if (realm.state() != RealmLifecycleState.ACTIVE || realm.lifecycleOperation().isPresent()) {
+        if (realm.state() != RealmLifecycleState.ACTIVE || realm.lifecycleOperation().isPresent()
+                || !transferAllowed.test(realm.id())) {
             return Result.of(Status.LIFECYCLE_CONFLICT);
         }
         if (owner.equals(target)) return Result.of(Status.INVALID_TARGET);
@@ -72,7 +83,8 @@ public final class RealmOwnershipTransferService {
         if (transfer == null) return Result.of(Status.NOT_FOUND);
         Realm realm = repository.findById(transfer.realmId()).orElse(null);
         if (realm == null || realm.state() != RealmLifecycleState.ACTIVE
-                || !realm.owner().uuid().equals(owner) || realm.lifecycleOperation().isPresent()) {
+                || !realm.owner().uuid().equals(owner) || realm.lifecycleOperation().isPresent()
+                || !transferAllowed.test(realm.id())) {
             return Result.of(Status.LIFECYCLE_CONFLICT);
         }
         if (repository.findByOwner(target).isPresent()) return Result.of(Status.TARGET_ALREADY_OWNS_REALM);

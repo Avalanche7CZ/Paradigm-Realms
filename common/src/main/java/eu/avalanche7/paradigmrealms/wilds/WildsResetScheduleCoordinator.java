@@ -48,6 +48,7 @@ public final class WildsResetScheduleCoordinator {
     }
 
     public Tick tick() {
+        if (!config.get().enabled()) return Tick.NONE;
         WildsState state = lifecycle.state();
         if (state.lifecycle() != WildsLifecycleState.RESET_SCHEDULED) return Tick.NONE;
         WildsResetOperation operation = state.operation().orElseThrow();
@@ -77,7 +78,7 @@ public final class WildsResetScheduleCoordinator {
 
     public Optional<Instant> nextRecurringReset() {
         WildsConfig current = config.get();
-        if (!current.scheduleEnabled()
+        if (!current.enabled() || !current.scheduleEnabled()
                 || lifecycle.state().lifecycle() != WildsLifecycleState.ACTIVE) {
             return Optional.empty();
         }
