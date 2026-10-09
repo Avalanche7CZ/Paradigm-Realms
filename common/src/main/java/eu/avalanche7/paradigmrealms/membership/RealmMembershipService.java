@@ -198,6 +198,9 @@ public final class RealmMembershipService {
     }
 
     private Optional<Realm> managedRealm(UUID actor) {
+        Optional<Realm> owned = repository.findByOwner(actor)
+                .filter(realm -> realm.state() == RealmLifecycleState.ACTIVE);
+        if (owned.isPresent()) return owned;
         return repository.list().stream()
                 .filter(realm -> realm.state() == RealmLifecycleState.ACTIVE)
                 .filter(realm -> realm.owner().uuid().equals(actor) || realm.managers().contains(actor))

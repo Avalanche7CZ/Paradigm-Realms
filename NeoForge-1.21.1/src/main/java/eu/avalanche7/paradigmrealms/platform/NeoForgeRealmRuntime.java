@@ -19,6 +19,7 @@ import eu.avalanche7.paradigmrealms.application.RealmInspectionService;
 import eu.avalanche7.paradigmrealms.application.RealmMemberInspectionService;
 import eu.avalanche7.paradigmrealms.application.RealmTeleportService;
 import eu.avalanche7.paradigmrealms.application.RealmVisitService;
+import eu.avalanche7.paradigmrealms.application.RealmVisitReturnPoints;
 import eu.avalanche7.paradigmrealms.core.RealmsRuntime;
 import eu.avalanche7.paradigmrealms.core.RealmsRuntimeHooks;
 import eu.avalanche7.paradigmrealms.core.RealmsCommandRuntime;
@@ -132,7 +133,7 @@ public final class NeoForgeRealmRuntime implements RealmsCommandRuntime {
                         NeoForgeRealmRuntime.this.revalidateRealmPresence(id);
                     }
                 });
-        this.presence = new RealmPresenceService(server, this, protection, common.teleports());
+        this.presence = new RealmPresenceService(server, this, protection, common.teleports(), common.visitReturnPoints());
         lifecyclePresence.set(this.presence);
         NeoForgeProtectionHooks.install(protection);
         this.wilds = new NeoForgeWildsService(server, this, config.wilds(), permissions, messages);
@@ -500,8 +501,13 @@ public final class NeoForgeRealmRuntime implements RealmsCommandRuntime {
     @Override
     public TeleportResult visit(UUID player, Realm realm) {
         ServerPlayerEntity online = online(player);
-        if (online != null) presence.rememberReturn(online);
-        return common.teleports().teleportToRealm(player, realm);
+        var returnPoint = online == null ? Optional.<RealmVisitReturnPoints.ReturnPoint>empty()
+                : presence.returnPoint(online);
+        TeleportResult result = common.teleports().teleportToRealm(player, realm);
+        if (result == TeleportResult.SUCCESS) {
+            returnPoint.ifPresent(point -> common.visitReturnPoints().remember(player, point, realm));
+        }
+        return result;
     }
 
     @Override public TeleportResult leaveForeignRealm(UUID player) {

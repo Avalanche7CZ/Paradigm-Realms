@@ -7,6 +7,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import eu.avalanche7.paradigmrealms.ParadigmRealms;
 import eu.avalanche7.paradigmrealms.domain.DimensionId;
@@ -17,6 +18,7 @@ import eu.avalanche7.paradigmrealms.protection.ProtectionDecision;
 import eu.avalanche7.paradigmrealms.region.RealmRegionKind;
 import eu.avalanche7.paradigmrealms.platform.NeoForgeRealmRuntime;
 import eu.avalanche7.paradigmrealms.application.RealmTeleportService;
+import eu.avalanche7.paradigmrealms.application.RealmVisitReturnPoints;
 import eu.avalanche7.paradigmrealms.application.RealmLifecycleEffects;
 import eu.avalanche7.paradigmrealms.domain.realm.Realm;
 import eu.avalanche7.paradigmrealms.platform.teleport.TeleportResult;
@@ -39,6 +41,7 @@ public final class RealmPresenceService {
     private final NeoForgeRealmRuntime runtime;
     private final NeoForgeProtectionService protection;
     private final RealmTeleportService teleports;
+    private final RealmVisitReturnPoints visitReturnPoints;
     private final Map<UUID, SafeLocation> lastAllowed = new HashMap<>();
     private final Map<UUID, Long> lastEvacuationAttempt = new HashMap<>();
     private final Set<UUID> evacuating = new HashSet<>();
@@ -48,11 +51,13 @@ public final class RealmPresenceService {
             MinecraftServer server,
             NeoForgeRealmRuntime runtime,
             NeoForgeProtectionService protection,
-            RealmTeleportService teleports) {
+            RealmTeleportService teleports,
+            RealmVisitReturnPoints visitReturnPoints) {
         this.server = server;
         this.runtime = runtime;
         this.protection = protection;
         this.teleports = teleports;
+        this.visitReturnPoints = visitReturnPoints;
     }
 
     public void validateAll() {
@@ -64,6 +69,7 @@ public final class RealmPresenceService {
     public boolean validate(ServerPlayerEntity player) {
         if (evacuating.contains(player.getUuid())) return false;
         if (!isRealms(player.getWorld())) {
+            visitReturnPoints.remove(player.getUuid());
             rememberIfSafe(player);
             return true;
         }
@@ -95,12 +101,14 @@ public final class RealmPresenceService {
 
     public void disconnect(UUID player) {
         lastAllowed.remove(player);
+        visitReturnPoints.remove(player);
         lastEvacuationAttempt.remove(player);
         evacuating.remove(player);
     }
 
     public void clear() {
         lastAllowed.clear();
+        visitReturnPoints.clear();
         lastEvacuationAttempt.clear();
         evacuating.clear();
         lifecycleEvacuationAttempts.clear();
@@ -113,7 +121,8 @@ public final class RealmPresenceService {
         lastAllowed.keySet().removeIf(player -> !online.contains(player));
         lastEvacuationAttempt.keySet().removeIf(player -> !online.contains(player));
         evacuating.removeIf(player -> !online.contains(player));
-        return before - lastAllowed.size() - lastEvacuationAttempt.size() - evacuating.size();
+        return before - lastAllowed.size() - lastEvacuationAttempt.size() - evacuating.size()
+                + visitReturnPoints.prune(online);
     }
 
     public RealmLifecycleEffects.EvacuationResult evacuateAndVerify(Realm source) {
@@ -131,6 +140,7 @@ public final class RealmPresenceService {
             TeleportResult result = own != null && !own.id().equals(source.id())
                     ? teleports.teleportToRealm(player.getUuid(), own)
                     : teleports.teleportToOverworldSpawn(player.getUuid());
+            if (result == TeleportResult.SUCCESS) visitReturnPoints.remove(player.getUuid());
             if (result != TeleportResult.SUCCESS) {
                 ParadigmRealms.LOGGER.warn("Lifecycle evacuation attempt {} failed for {} in realm {}: {}",
                         attempt, player.getUuid(), source.id(), result);
@@ -155,20 +165,31 @@ public final class RealmPresenceService {
                 : eu.avalanche7.paradigmrealms.modules.command.RealmOwnerCommandRuntime.KickResult.KICKED;
     }
 
-    public void rememberReturn(ServerPlayerEntity player) {
+    public Optional<RealmVisitReturnPoints.ReturnPoint> returnPoint(ServerPlayerEntity player) {
         rememberIfSafe(player);
+        SafeLocation location = lastAllowed.get(player.getUuid());
+        return location == null ? Optional.empty() : Optional.of(new RealmVisitReturnPoints.ReturnPoint(
+                DimensionId.parse(location.dimension()), new BlockPosition(location.x(), location.y(), location.z(),
+                        location.yaw(), location.pitch())));
     }
 
     public TeleportResult leaveForeignRealm(UUID playerId) {
         ServerPlayerEntity player = server.getPlayerManager().getPlayer(playerId);
         if (player == null) return TeleportResult.WORLD_UNAVAILABLE;
+        var returnPoint = visitReturnPoints.remove(playerId);
         Realm owned = runtime.repository().findByOwner(playerId).orElse(null);
         if (owned != null) {
             TeleportResult home = teleports.teleportToRealm(playerId, owned);
             if (home == TeleportResult.SUCCESS) return home;
         }
-        SafeLocation previous = lastAllowed.remove(playerId);
-        if (previous != null && tryLastAllowed(player, previous)) return TeleportResult.SUCCESS;
+        lastAllowed.remove(playerId);
+        if (returnPoint.isPresent()) {
+            var previous = returnPoint.orElseThrow();
+            var position = previous.position();
+            SafeLocation location = new SafeLocation(previous.dimension().toString(), position.x(), position.y(),
+                    position.z(), position.yaw(), position.pitch());
+            if (tryLastAllowed(player, location)) return TeleportResult.SUCCESS;
+        }
         return teleports.teleportToOverworldSpawn(playerId);
     }
 
@@ -200,6 +221,7 @@ public final class RealmPresenceService {
             player.getPassengerList().forEach(net.minecraft.entity.Entity::stopRiding);
             SafeLocation previous = lastAllowed.get(player.getUuid());
             if (previous != null && tryLastAllowed(player, previous)) {
+                visitReturnPoints.remove(player.getUuid());
                 player.sendMessage(Text.literal(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
                         "protection.entry_denied", java.util.Map.of("reason", reason))), false);
                 return;
@@ -207,12 +229,14 @@ public final class RealmPresenceService {
             var owned = runtime.repository().findByOwner(player.getUuid());
             if (owned.isPresent() && owned.orElseThrow().state() == RealmLifecycleState.ACTIVE
                     && teleports.teleportToRealm(player.getUuid(), owned.orElseThrow()) == TeleportResult.SUCCESS) {
+                visitReturnPoints.remove(player.getUuid());
                 player.sendMessage(Text.literal(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
                         "protection.returned_realm", java.util.Map.of("reason", reason))), false);
                 return;
             }
             TeleportResult fallback = teleports.teleportToOverworldSpawn(player.getUuid());
             if (fallback == TeleportResult.SUCCESS) {
+                visitReturnPoints.remove(player.getUuid());
                 player.sendMessage(Text.literal(eu.avalanche7.paradigmrealms.message.PlayerMessages.text(
                         "protection.returned_overworld", java.util.Map.of("reason", reason))), false);
             } else {

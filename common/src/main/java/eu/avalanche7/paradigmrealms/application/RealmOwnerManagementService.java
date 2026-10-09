@@ -163,6 +163,9 @@ public final class RealmOwnerManagementService {
     }
 
     public Optional<Realm> managedRealm(UUID actor) {
+        Optional<Realm> owned = repository.findByOwner(actor).filter(value -> value.state()
+                == eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState.ACTIVE);
+        if (owned.isPresent()) return owned;
         return repository.list().stream().filter(value -> value.owner().uuid().equals(actor)
                 || value.managers().contains(actor)).filter(value -> value.state()
                 == eu.avalanche7.paradigmrealms.domain.realm.RealmLifecycleState.ACTIVE).findFirst();

@@ -477,7 +477,7 @@ public final class RealmOwnerCommandModule {
                     .teleportFailure(teleport));
             return 0;
         }
-        source.sendFeedbackKey("commands.owner.visiting", Map.of("realm", realm.displayName()));
+        source.sendFeedbackKey("commands.owner.visiting", Map.of("realm_id", Long.toString(realm.id().value())));
         return 1;
     }
 

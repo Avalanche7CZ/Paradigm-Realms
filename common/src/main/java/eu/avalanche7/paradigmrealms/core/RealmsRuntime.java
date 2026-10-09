@@ -20,6 +20,7 @@ import eu.avalanche7.paradigmrealms.application.RealmMemberInspectionService;
 import eu.avalanche7.paradigmrealms.application.RealmSpawnService;
 import eu.avalanche7.paradigmrealms.application.RealmTeleportService;
 import eu.avalanche7.paradigmrealms.application.RealmVisitService;
+import eu.avalanche7.paradigmrealms.application.RealmVisitReturnPoints;
 import eu.avalanche7.paradigmrealms.application.StartupValidationService;
 import eu.avalanche7.paradigmrealms.domain.DimensionId;
 import eu.avalanche7.paradigmrealms.domain.RealmPresetId;
@@ -49,6 +50,7 @@ public final class RealmsRuntime {
     private final RealmInspectionService inspection;
     private final RealmMemberInspectionService memberInspection;
     private final RealmVisitService visits;
+    private final RealmVisitReturnPoints visitReturnPoints = new RealmVisitReturnPoints();
     private final AllocationPreviewService allocationPreview;
     private final StartupValidationService startupValidation;
     private final RealmCreationService creation;
@@ -160,6 +162,8 @@ public final class RealmsRuntime {
     }
 
     public RealmInspectionService inspection() { return inspection; }
+
+    public RealmVisitReturnPoints visitReturnPoints() { return visitReturnPoints; }
 
     public RealmMemberInspectionService.Decision inspectMembers(UUID actor, Optional<UUID> requestedOwner) {
         return memberInspection.inspect(actor, requestedOwner);

@@ -35,6 +35,13 @@ run/
 *.tar.gz
 *.rar
 
+# Local release publishing
+/release-jars/
+/scripts/release-secrets.local.env
+/scripts/.release-state.json
+/scripts/.release-state.json.tmp
+__pycache__/
+
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
@@ -61,4 +68,11 @@ replay_pid*
 !/common/src/test/java/eu/avalanche7/paradigmrealms/backup/io/RestoreManifestFileTest.java
 !/common/src/test/java/eu/avalanche7/paradigmrealms/backup/offline/RealmBackupRestoreToolTest.java
 /validation
+/common/src/test
+
+!/common/src/test/
+/common/src/test/**
+!/common/src/test/**/
+!/common/src/test/java/eu/avalanche7/paradigmrealms/application/RealmVisitReturnPointsTest.java
+!/common/src/test/java/eu/avalanche7/paradigmrealms/application/RealmListingAccessTest.java
 /common/src/test

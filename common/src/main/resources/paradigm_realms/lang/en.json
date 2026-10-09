@@ -206,7 +206,7 @@
       "description_changed": "Realm description changed.",
       "description_cleared": "Realm description cleared.",
       "description_empty": "This realm has no description.",
-      "listing_enabled": "Your realm is now listed publicly.",
+      "listing_enabled": "Realm listing enabled. Only public realms appear in /realm public; use /realm access public to allow visitors.",
       "listing_disabled": "Your realm is no longer publicly listed.",
       "directory_title": "Public realms - page {page}/{pages}:",
       "directory_name": "{name} ",

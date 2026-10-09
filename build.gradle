@@ -24,3 +24,16 @@ tasks.register('build') {
     description = 'Builds every Paradigm Realms module.'
     dependsOn subprojects.collect { "${it.path}:build" }
 }
+
+tasks.register('collectOutputs', Sync) {
+    group = 'build'
+    description = 'Collects the three main mod JARs into release-jars.'
+    def releaseModules = ['Fabric-1.21.1', 'Forge-1.21.1', 'NeoForge-1.21.1']
+    dependsOn releaseModules.collect { ":${it}:build" }
+    into layout.projectDirectory.dir('release-jars')
+    releaseModules.each { module ->
+        from providers.provider {
+            project(":${module}").tasks.named('remapJar').get().archiveFile.get()
+        }
+    }
+}
